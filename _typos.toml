@@ -1,0 +1,4 @@
+# `nd` is a dict-comprehension binding in graph.py; `trrack` is the project name.
+[default.extend-words]
+nd = "nd"
+trrack = "trrack"

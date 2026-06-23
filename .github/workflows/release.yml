@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    # Trailing * also matches pre-release suffixes (e.g. v0.0.1a1, v1.2.0rc1).
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Index to publish to"
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify lockstep versions
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, sys, tomllib
+
+          def version(path):
+              return tomllib.loads(pathlib.Path(path).read_text())["project"]["version"]
+
+          core = version("packages/trrack/pyproject.toml")
+          widget = version("packages/trrack-widget/pyproject.toml")
+          if core != widget:
+              sys.exit(f"Lockstep violation: trrack={core} trrack-widget={widget}")
+          if os.environ.get("REF_TYPE") == "tag":
+              tag = os.environ["REF_NAME"].removeprefix("v")
+              if tag != core:
+                  sys.exit(f"Tag {os.environ['REF_NAME']} does not match version {core}")
+          print(f"versions OK: {core}")
+          PY
+      - uses: astral-sh/setup-uv@v7
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build frontend bundle
+        run: |
+          cd packages/trrack-widget
+          pnpm install
+          pnpm run build
+          cd ../..
+      - run: uv build --package trrack --out-dir dist-trrack
+      - run: uv build --package trrack-widget --out-dir dist-trrack-widget
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-trrack
+          path: dist-trrack/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-trrack-widget
+          path: dist-trrack-widget/
+
+  # One publish job per package: each runs in its own environment so the two
+  # pending publishers have distinct (owner, repo, workflow, environment)
+  # tuples — PyPI requires that uniqueness, which a monorepo otherwise violates.
+  # The environment and index are chosen by the dispatch `target`: a tag push
+  # defaults to pypi (envs pypi / pypi-widget); a manual run can target testpypi
+  # (envs testpypi / testpypi-widget) for a dry run.
+  publish:
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - { package: trrack, suffix: "" }
+          - { package: trrack-widget, suffix: "-widget" }
+    runs-on: ubuntu-latest
+    environment: ${{ format('{0}{1}', inputs.target || 'pypi', matrix.suffix) }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ matrix.package }}
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+          repository-url: ${{ inputs.target == 'testpypi' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}

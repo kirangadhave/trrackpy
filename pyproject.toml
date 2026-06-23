@@ -1,0 +1,47 @@
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+trrack = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "marimo[recommended]>=0.23.10",
+    "ruff>=0.15.9",
+    "ty",
+    "watchfiles>=0.24.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+src = ["packages/trrack/src", "packages/trrack-widget/src"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D203",    # one-blank-line-before-class (conflicts with D211)
+    "D213",    # multi-line-summary-second-line (conflicts with D212)
+    "COM812",  # trailing comma (formatter handles this)
+    "ISC001",  # implicit string concat (formatter handles this)
+    "FBT001", "FBT002",  # boolean positional args — acceptable in this API
+    "ANN401",  # allow typing.Any where the snapshot dicts need it
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*" = ["D", "S101", "ANN", "SLF001", "PLR2004", "INP001", "PLC0415"]
+"trrack-widget-demo.py" = ["ALL"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/trrack/tests", "packages/trrack-widget/tests"]
+markers = [
+    "unit: fast isolated tests",
+    "integration: cross-package tests",
+]
