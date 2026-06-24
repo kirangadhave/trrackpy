@@ -255,7 +255,9 @@ def test_jupyter_mimebundle_renders_composite(monkeypatch):
 
     # Bare display builds an HBox of the target and the controls, and returns
     # without recursing back into this hook (a recursion bug would raise).
-    bundle = tt._repr_mimebundle_()
+    # ty resolves the overridden method over a union with the inherited
+    # ipywidgets one and wrongly reports `self` unbound; the call is valid.
+    bundle = tt._repr_mimebundle_()  # ty: ignore[missing-argument]
     assert bundle is not None
     assert captured["children"] == [counter, tt]
 
