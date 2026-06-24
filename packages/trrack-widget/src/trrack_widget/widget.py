@@ -371,9 +371,12 @@ class Trrackable(anywidget.AnyWidget):
 
     @property
     def view(self) -> Any:
-        """Wrapped widget and controls side by side (marimo hstack).
+        """Target widget and controls composed per :attr:`panel_layout`.
 
-        Falls back to ``ipywidgets.HBox`` when marimo is not installed.
+        Under marimo, ``"docked"`` is a flex row where the widget grows to fill
+        the space the controls don't use; ``"floating"`` overlays the controls
+        on the right of the output so the widget keeps the full width. Falls
+        back to ``ipywidgets.HBox`` (docked-style) when marimo is not installed.
         """
         try:
             import marimo as mo  # noqa: PLC0415
@@ -381,7 +384,23 @@ class Trrackable(anywidget.AnyWidget):
             import ipywidgets  # noqa: PLC0415
 
             return ipywidgets.HBox([self.widget, self.controls])
-        return mo.hstack([self.widget, self.controls], align="center")
+
+        widget_html = mo.as_html(self.widget).text
+        controls_html = mo.as_html(self.controls).text
+        if self.panel_layout == "floating":
+            return mo.Html(
+                '<div style="position:relative;display:flow-root;width:100%">'
+                f"<div>{widget_html}</div>"
+                '<div style="position:absolute;top:0;right:0;z-index:5">'
+                f"{controls_html}</div>"
+                "</div>"
+            )
+        return mo.Html(
+            '<div style="display:flex;align-items:flex-start;gap:8px;width:100%">'
+            f'<div style="flex:1;min-width:0">{widget_html}</div>'
+            f'<div style="flex:0 0 auto">{controls_html}</div>'
+            "</div>"
+        )
 
     def _display_(self) -> Any:
         """Render a bare ``Trrackable`` as :attr:`view` under marimo.

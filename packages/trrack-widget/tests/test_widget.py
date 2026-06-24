@@ -282,3 +282,21 @@ def test_panel_layout_and_expanded_are_not_recorded():
     assert "panel_layout" not in payload
     assert "expanded" not in payload
     assert payload["tracked"] == ["count"]
+
+
+def test_docked_view_is_a_flex_row_that_expands_the_widget():
+    pytest.importorskip("marimo")
+    counter = Counter()
+    tt = Trrackable(counter, panel_layout="docked")
+    html = tt.view.text
+    assert "display:flex" in html
+    assert "flex:1" in html  # widget grows to fill remaining space
+
+
+def test_floating_view_overlays_the_controls():
+    pytest.importorskip("marimo")
+    counter = Counter()
+    tt = Trrackable(counter, panel_layout="floating")
+    html = tt.view.text
+    assert "position:relative" in html
+    assert "position:absolute" in html  # controls float over the output
