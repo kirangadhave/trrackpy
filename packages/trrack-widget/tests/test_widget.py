@@ -260,43 +260,19 @@ def test_jupyter_mimebundle_renders_composite(monkeypatch):
     assert captured["children"] == [counter, tt]
 
 
-def test_panel_layout_defaults_to_docked_and_expanded_true():
+def test_view_is_a_flex_row_that_expands_the_widget():
+    pytest.importorskip("marimo")
     counter = Counter()
     tt = Trrackable(counter)
-    assert tt.panel_layout == "docked"
-    assert tt.expanded is True
+    html = tt.view.text
+    assert "display: flex" in html
+    assert "flex: 1" in html  # widget grows to fill remaining space
 
 
-def test_panel_layout_and_expanded_are_configurable():
-    counter = Counter()
-    tt = Trrackable(counter, panel_layout="floating", expanded=False)
-    assert tt.panel_layout == "floating"
-    assert tt.expanded is False
-
-
-def test_panel_layout_and_expanded_are_not_recorded():
-    # UI state must never leak into the provenance payload.
-    counter = Counter()
-    tt = Trrackable(counter, panel_layout="floating", expanded=False)
-    payload = tt.to_dict()
-    assert "panel_layout" not in payload
-    assert "expanded" not in payload
-    assert payload["tracked"] == ["count"]
-
-
-def test_docked_view_is_a_flex_row_that_expands_the_widget():
+def test_view_keeps_controls_live():
+    # The controls must be embedded as a live marimo element (so its JS runs),
+    # not a static HTML snapshot.
     pytest.importorskip("marimo")
     counter = Counter()
-    tt = Trrackable(counter, panel_layout="docked")
-    html = tt.view.text
-    assert "display:flex" in html
-    assert "flex:1" in html  # widget grows to fill remaining space
-
-
-def test_floating_view_overlays_the_controls():
-    pytest.importorskip("marimo")
-    counter = Counter()
-    tt = Trrackable(counter, panel_layout="floating")
-    html = tt.view.text
-    assert "position:relative" in html
-    assert "position:absolute" in html  # controls float over the output
+    tt = Trrackable(counter)
+    assert "marimo-anywidget" in tt.view.text

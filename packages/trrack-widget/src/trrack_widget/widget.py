@@ -7,7 +7,7 @@ import contextlib
 import datetime as dt
 import pathlib
 import threading
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import anywidget
 import traitlets
@@ -54,8 +54,6 @@ class Trrackable(anywidget.AnyWidget):
     nodes = traitlets.Dict().tag(sync=True)
     current_id = traitlets.Unicode().tag(sync=True)
     _relabel = traitlets.Dict(allow_none=True).tag(sync=True)
-    panel_layout = traitlets.Unicode("docked").tag(sync=True)
-    expanded = traitlets.Bool(default_value=True).tag(sync=True)
 
     _esm = _STATIC / "controls.js"
 
@@ -69,8 +67,6 @@ class Trrackable(anywidget.AnyWidget):
         store: Store | None = None,
         restore: dict | None = None,
         label_formatter: Callable[[dict, dict], str] | None = None,
-        panel_layout: Literal["docked", "floating"] = "docked",
-        expanded: bool = True,
         **kwargs: Any,
     ) -> None:
         """Wrap ``target``, recording its synced traits into a provenance graph.
@@ -90,16 +86,9 @@ class Trrackable(anywidget.AnyWidget):
                 keyed by tracked trait name. When omitted, a before→after diff
                 of the changed traits is used. Useful for shortening noisy
                 values, e.g. rounding floats.
-            panel_layout: ``"docked"`` (default) places the controls beside the
-                widget, always visible; ``"floating"`` overlays a collapsible
-                panel on the right of the output.
-            expanded: Initial open state of the floating panel. Ignored when
-                ``panel_layout="docked"``.
             kwargs: Forwarded to :class:`anywidget.AnyWidget`.
         """
         super().__init__(**kwargs)
-        self.panel_layout = panel_layout
-        self.expanded = expanded
         self._target = target
         self._label_formatter = label_formatter
         self._controls_view: Any = None
@@ -371,12 +360,12 @@ class Trrackable(anywidget.AnyWidget):
 
     @property
     def view(self) -> Any:
-        """Target widget and controls composed per :attr:`panel_layout`.
+        """Target widget and controls side by side, widget filling the row.
 
-        Under marimo, ``"docked"`` is a flex row where the widget grows to fill
-        the space the controls don't use; ``"floating"`` overlays the controls
-        on the right of the output so the widget keeps the full width. Falls
-        back to ``ipywidgets.HBox`` (docked-style) when marimo is not installed.
+        ``widths=[1, 0]`` lets the widget grow into the space the controls
+        don't use. Passing the controls as a live object (rather than embedding
+        their rendered HTML) keeps them a hydrated marimo element. Falls back to
+        ``ipywidgets.HBox`` when marimo is not installed.
         """
         try:
             import marimo as mo  # noqa: PLC0415
@@ -385,21 +374,11 @@ class Trrackable(anywidget.AnyWidget):
 
             return ipywidgets.HBox([self.widget, self.controls])
 
-        widget_html = mo.as_html(self.widget).text
-        controls_html = mo.as_html(self.controls).text
-        if self.panel_layout == "floating":
-            return mo.Html(
-                '<div style="position:relative;display:flow-root;width:100%">'
-                f"<div>{widget_html}</div>"
-                '<div style="position:absolute;top:0;right:0;z-index:5">'
-                f"{controls_html}</div>"
-                "</div>"
-            )
-        return mo.Html(
-            '<div style="display:flex;align-items:flex-start;gap:8px;width:100%">'
-            f'<div style="flex:1;min-width:0">{widget_html}</div>'
-            f'<div style="flex:0 0 auto">{controls_html}</div>'
-            "</div>"
+        return mo.hstack(
+            [self.widget, self.controls],
+            justify="start",
+            align="start",
+            widths=[1, 0],
         )
 
     def _display_(self) -> Any:

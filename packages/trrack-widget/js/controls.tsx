@@ -21,10 +21,6 @@ const CORNER = 6
 const LABEL_W = 180
 const VIEW_W = 320
 const VIEW_H = 360
-const HANDLE_W = 22
-// Panel chrome around the graph: nav row height + paddings. Matches the
-// padding used by the panel wrapper below so the collapsed shell is exact.
-const PANEL_W = VIEW_W + 16
 
 const TRUNK_COLOR = "#2563eb"
 // Branch columns cycle through these so sibling branches stay distinct.
@@ -431,73 +427,10 @@ function NavButton({
   )
 }
 
-interface HandleProps {
-  expanded: boolean
-  onToggle: () => void
-}
-
-function Handle({ expanded, onToggle }: HandleProps) {
-  return (
-    <button
-      type="button"
-      aria-label={expanded ? "Collapse history" : "Expand history"}
-      aria-expanded={expanded}
-      onClick={onToggle}
-      style={{
-        flex: "0 0 auto",
-        width: HANDLE_W,
-        alignSelf: "stretch",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 6,
-        padding: "8px 0",
-        border: "1px solid #e5e7eb",
-        borderRight: "none",
-        borderRadius: "6px 0 0 6px",
-        background: "#f9fafb",
-        color: "#374151",
-        cursor: "pointer",
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          display: "inline-flex",
-          width: 14,
-          height: 14,
-          alignItems: "center",
-          justifyContent: "center",
-          border: "1px solid #d1d5db",
-          borderRadius: 3,
-          fontSize: 10,
-          lineHeight: 1,
-        }}
-      >
-        {expanded ? "›" : "‹"}
-      </span>
-      <span
-        style={{
-          writingMode: "vertical-rl",
-          textOrientation: "mixed",
-          fontSize: 11,
-          letterSpacing: 0.5,
-          userSelect: "none",
-        }}
-      >
-        History
-      </span>
-    </button>
-  )
-}
-
 function Controls() {
   const [nodes] = useModelState<Nodes>("nodes")
   const [currentId, setCurrentId] = useModelState<string>("current_id")
   const [, setRelabel] = useModelState<RelabelRequest>("_relabel")
-  const [panelLayout] = useModelState<string>("panel_layout")
-  const [expanded, setExpanded] = useModelState<boolean>("expanded")
   const nonce = useRef(0)
   const rootId = Object.keys(nodes).find((id) => nodes[id].parent === null)
   const current = nodes[currentId]
@@ -524,7 +457,7 @@ function Controls() {
     ? "Already at initial state"
     : `Reset to “${rootLabel}”`
 
-  const panel = (
+  return (
     <div style={{ fontFamily: "system-ui", fontSize: 13 }}>
       <div style={{ display: "flex", gap: 6, marginBottom: 6, width: VIEW_W }}>
         <NavButton
@@ -559,26 +492,6 @@ function Controls() {
           onRelabel={onRelabel}
         />
       )}
-    </div>
-  )
-
-  if (panelLayout !== "floating") return panel
-
-  return (
-    <div
-      style={{
-        width: expanded ? HANDLE_W + PANEL_W : HANDLE_W,
-        overflow: "hidden",
-        transition: "width 0.2s ease",
-        display: "flex",
-        alignItems: "stretch",
-        background: "#fff",
-        boxShadow: expanded ? "-6px 0 16px rgba(0,0,0,0.18)" : "none",
-        borderRadius: "6px 0 0 6px",
-      }}
-    >
-      <Handle expanded={expanded} onToggle={() => setExpanded(!expanded)} />
-      <div style={{ width: PANEL_W, flex: "0 0 auto", padding: 8 }}>{panel}</div>
     </div>
   )
 }
