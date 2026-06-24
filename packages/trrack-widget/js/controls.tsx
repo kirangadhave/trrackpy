@@ -1,6 +1,6 @@
 import { createRender, useModelState } from "@anywidget/react"
-import { Check, Pencil, Redo2, Undo2, X } from "lucide-react"
-import { useRef, useState } from "react"
+import { Check, Pencil, Redo2, RotateCcw, Undo2, X } from "lucide-react"
+import { type CSSProperties, type ReactNode, useRef, useState } from "react"
 
 interface Node {
   id: string
@@ -363,6 +363,70 @@ interface RelabelRequest {
   nonce: number
 }
 
+const navButtonStyle = (disabled: boolean, hover: boolean): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  padding: 4,
+  border: "none",
+  borderRadius: 4,
+  color: "#374151",
+  background: hover && !disabled ? "rgba(37,99,235,0.08)" : "transparent",
+  cursor: disabled ? "default" : "pointer",
+  opacity: disabled ? 0.3 : 1,
+})
+
+const navTooltipStyle: CSSProperties = {
+  position: "absolute",
+  top: "100%",
+  left: "50%",
+  transform: "translateX(-50%)",
+  marginTop: 4,
+  padding: "3px 7px",
+  background: "#111827",
+  color: "#fff",
+  fontSize: 12,
+  borderRadius: 4,
+  whiteSpace: "nowrap",
+  pointerEvents: "none",
+  zIndex: 10,
+  boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+}
+
+interface NavButtonProps {
+  tip: string
+  disabled: boolean
+  onClick: () => void
+  wrapperStyle?: CSSProperties
+  children: ReactNode
+}
+
+function NavButton({
+  tip,
+  disabled,
+  onClick,
+  wrapperStyle,
+  children,
+}: NavButtonProps) {
+  const [hover, setHover] = useState(false)
+  return (
+    <div
+      style={{ position: "relative", display: "inline-flex", ...wrapperStyle }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <button
+        aria-label={tip}
+        disabled={disabled}
+        onClick={onClick}
+        style={navButtonStyle(disabled, hover)}
+      >
+        {children}
+      </button>
+      {hover && <div style={navTooltipStyle}>{tip}</div>}
+    </div>
+  )
+}
+
 function Controls() {
   const [nodes] = useModelState<Nodes>("nodes")
   const [currentId, setCurrentId] = useModelState<string>("current_id")
@@ -376,36 +440,48 @@ function Controls() {
     setRelabel({ id, text, nonce: nonce.current })
   }
 
-  const iconButton = {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: 4,
-  } as const
+  const atRoot = !current?.parent
+  const atLeaf = !current?.children.length
+  const redoChildId = current?.children[current.children.length - 1]
+  const rootLabel = rootId ? nodes[rootId]?.label : undefined
+  const resetDisabled = !rootId || currentId === rootId
+
+  const undoTip =
+    !atRoot && current?.parent
+      ? `Undo to “${nodes[current.parent]?.label}”`
+      : "Nothing to undo"
+  const redoTip = redoChildId
+    ? `Redo to “${nodes[redoChildId]?.label}”`
+    : "Nothing to redo"
+  const resetTip = resetDisabled
+    ? "Already at initial state"
+    : `Reset to “${rootLabel}”`
 
   return (
     <div style={{ fontFamily: "system-ui", fontSize: 13 }}>
-      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-        <button
-          title="Undo"
-          aria-label="Undo"
-          disabled={!current?.parent}
+      <div style={{ display: "flex", gap: 6, marginBottom: 6, width: VIEW_W }}>
+        <NavButton
+          tip={undoTip}
+          disabled={atRoot}
           onClick={() => current?.parent && setCurrentId(current.parent)}
-          style={iconButton}
         >
           <Undo2 size={16} />
-        </button>
-        <button
-          title="Redo"
-          aria-label="Redo"
-          disabled={!current?.children.length}
-          onClick={() =>
-            current?.children.length &&
-            setCurrentId(current.children[current.children.length - 1])
-          }
-          style={iconButton}
+        </NavButton>
+        <NavButton
+          tip={redoTip}
+          disabled={atLeaf}
+          onClick={() => redoChildId && setCurrentId(redoChildId)}
         >
           <Redo2 size={16} />
-        </button>
+        </NavButton>
+        <NavButton
+          tip={resetTip}
+          disabled={resetDisabled}
+          wrapperStyle={{ marginLeft: "auto" }}
+          onClick={() => rootId && setCurrentId(rootId)}
+        >
+          <RotateCcw size={16} />
+        </NavButton>
       </div>
       {rootId && (
         <Graph
