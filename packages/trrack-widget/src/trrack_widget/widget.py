@@ -29,6 +29,20 @@ def _now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
+def _in_marimo() -> bool:
+    """Whether code is running inside a live marimo kernel.
+
+    marimo being importable is not enough — it may be installed alongside a
+    Jupyter kernel. Display routing differs by host, so the check must be the
+    runtime, not the import.
+    """
+    try:
+        import marimo as mo  # noqa: PLC0415
+    except ImportError:
+        return False
+    return mo.running_in_notebook()
+
+
 class Trrackable(anywidget.AnyWidget):
     """Record a target widget's state as a branching provenance tree.
 
@@ -77,6 +91,7 @@ class Trrackable(anywidget.AnyWidget):
         super().__init__(**kwargs)
         self._target = target
         self._label_formatter = label_formatter
+        self._controls_view: Any = None
         # One guard for both observers: recording must not fire on playback,
         # and playback must not fire on the current_id bump that ends a record.
         self._internal = False
@@ -325,15 +340,32 @@ class Trrackable(anywidget.AnyWidget):
         return self._target
 
     @property
-    def controls(self) -> Trrackable:
-        """The provenance-tree control UI (this widget)."""
-        return self
+    def controls(self) -> Any:
+        """The provenance-tree control UI on its own.
+
+        Under marimo this is a ``mo.ui.anywidget`` wrapper around the control
+        widget rather than the :class:`Trrackable` itself. The wrapper renders
+        the same controls but has no display hook, so it can be embedded in
+        :attr:`view` — and displayed by itself — without re-entering
+        :meth:`_display_` (which would otherwise recurse, since the view embeds
+        the controls). Falls back to the raw widget when marimo is absent.
+        """
+        try:
+            import marimo as mo  # noqa: PLC0415
+        except ImportError:
+            return self
+        if self._controls_view is None:
+            self._controls_view = mo.ui.anywidget(self)
+        return self._controls_view
 
     @property
     def view(self) -> Any:
-        """Wrapped widget and controls side by side (marimo hstack).
+        """Target widget and controls side by side, widget filling the row.
 
-        Falls back to ``ipywidgets.HBox`` when marimo is not installed.
+        ``widths=[1, 0]`` lets the widget grow into the space the controls
+        don't use. Passing the controls as a live object (rather than embedding
+        their rendered HTML) keeps them a hydrated marimo element. Falls back to
+        ``ipywidgets.HBox`` when marimo is not installed.
         """
         try:
             import marimo as mo  # noqa: PLC0415
@@ -341,4 +373,37 @@ class Trrackable(anywidget.AnyWidget):
             import ipywidgets  # noqa: PLC0415
 
             return ipywidgets.HBox([self.widget, self.controls])
-        return mo.hstack([self.widget, self.controls], align="center")
+
+        return mo.hstack(
+            [self.widget, self.controls],
+            justify="start",
+            align="start",
+            widths=[1, 0],
+        )
+
+    def _display_(self) -> Any:
+        """Render a bare ``Trrackable`` as :attr:`view` under marimo.
+
+        This is marimo's display hook, consulted before any other formatter, so
+        returning the widget in a cell shows the target and its controls
+        together. ``.widget`` and ``.controls`` still render each half alone.
+        """
+        return self.view
+
+    def _repr_mimebundle_(self, **kwargs: Any) -> Any:
+        """Jupyter display hook: a bare ``Trrackable`` renders as :attr:`view`.
+
+        marimo renders via :meth:`_display_` and only reaches this hook to sync
+        widget state, where the composite must not be built — so under marimo
+        this defers to the plain control-widget bundle. In other hosts it is the
+        display path, so it emits an ``HBox`` of the target and controls. The box
+        references ``self`` by model id, so the frontend draws the controls
+        without re-entering this hook.
+        """
+        if _in_marimo():
+            return super()._repr_mimebundle_(**kwargs)
+        try:
+            import ipywidgets  # noqa: PLC0415
+        except ImportError:
+            return super()._repr_mimebundle_(**kwargs)
+        return ipywidgets.HBox([self.widget, self])._repr_mimebundle_(**kwargs)
