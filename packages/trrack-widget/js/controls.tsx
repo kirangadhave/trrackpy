@@ -496,4 +496,21 @@ function Controls() {
   )
 }
 
-export default { render: createRender(Controls) }
+const renderApp = createRender(Controls)
+
+export default {
+  render(ctx: Parameters<typeof renderApp>[0]) {
+    // Mount into our own shadow root so the controls are style-isolated from
+    // the host in every environment. Jupyter renders widgets into light DOM
+    // (host CSS — resets, themes — would otherwise reach our elements); marimo
+    // already wraps plugins in a shadow root but adopts its own stylesheets
+    // into it, so a nested root here simply guarantees the same isolation
+    // everywhere. CSS custom properties still inherit across the boundary, so
+    // host theming continues to apply.
+    const shadow = ctx.el.shadowRoot ?? ctx.el.attachShadow({ mode: "open" })
+    shadow.replaceChildren()
+    const mount = document.createElement("div")
+    shadow.append(mount)
+    return renderApp({ ...ctx, el: mount })
+  },
+}
