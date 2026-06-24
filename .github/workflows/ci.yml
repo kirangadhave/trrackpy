@@ -11,14 +11,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # `uv run` editable-installs trrack-widget, whose build hook runs `pnpm build`,
+  # so these jobs need node/pnpm and a built bundle even though ruff/ty don't
+  # read the compiled JS themselves.
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
-      # ruff/ty don't need the compiled JS, and these jobs have no pnpm. Stub the
-      # bundle so the editable install's frontend build hook skips (skip-if-exists).
-      - run: mkdir -p packages/trrack-widget/src/trrack_widget/static && touch packages/trrack-widget/src/trrack_widget/static/controls.js
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build frontend bundle
+        run: cd packages/trrack-widget && pnpm install && pnpm run build
       - run: uv run ruff check --output-format=github packages
       - run: uv run ruff format --check packages
 
@@ -27,7 +35,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
-      - run: mkdir -p packages/trrack-widget/src/trrack_widget/static && touch packages/trrack-widget/src/trrack_widget/static/controls.js
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build frontend bundle
+        run: cd packages/trrack-widget && pnpm install && pnpm run build
       - run: uv run ty check packages
 
   test:
