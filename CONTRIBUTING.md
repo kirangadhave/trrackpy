@@ -76,3 +76,53 @@ uvx pre-commit run --all-files
 - A new persistence backend implements the `trrack.Store` protocol
   (`save(dict) -> None`, `load() -> dict | None`) — no registry or plugin
   machinery to touch.
+
+## Releasing
+
+Both packages release **in lockstep**: they always carry the same version and
+are published together by one tag. The version string in each
+`pyproject.toml` is static — bump both.
+
+Pre-releases use [PEP 440](https://peps.python.org/pep-0440/) suffixes
+(`0.0.1a1`, `0.0.1b1`, `0.0.1rc1`). `pip`/`uv` ignore pre-releases unless asked
+(`pip install --pre`, `uv pip install --prerelease=allow`), so a pre-release
+claims the name and exercises the pipeline without reaching general users.
+
+### How a release runs
+
+`.github/workflows/release.yml` does the publishing. It triggers two ways:
+
+- **Tag push** (`vX.Y.Z` / `vX.Y.Za1`) → publishes to **PyPI**.
+- **Manual dispatch** with `target=testpypi` → publishes to **TestPyPI** (a dry
+  run); `target=pypi` is the manual escape hatch to real PyPI.
+
+The job order is: build both packages (a guard fails the run if the two
+versions differ, or if a tag's version doesn't match) → one publish job per
+package → on a tag, a **draft** GitHub Release with the wheels/sdists attached.
+
+Publishing uses [PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/)
+(OIDC) — no API tokens. Each publish job runs in its own GitHub Environment so
+the two pending publishers have distinct `(owner, repo, workflow, environment)`
+tuples; PyPI requires that uniqueness, which a monorepo publishing two projects
+from one workflow would otherwise violate. The environments:
+
+| Index | trrack | trrack-widget | Approval gate |
+| --- | --- | --- | --- |
+| PyPI | `pypi` | `pypi-widget` | required reviewer |
+| TestPyPI | `testpypi` | `testpypi-widget` | none (fast dry runs) |
+
+### Cutting a release
+
+1. Bump the `version` in **both** package `pyproject.toml`s to the same value.
+2. (Optional) Dry run: Actions → Release → Run workflow → `target=testpypi`, then
+   verify both appear on test.pypi.org. Installing the widget pulls the core:
+   `uv pip install --prerelease=allow --index-url https://test.pypi.org/simple/
+   --extra-index-url https://pypi.org/simple/ trrack-widget` (the extra index
+   supplies `anywidget`, which is not on TestPyPI).
+3. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+4. Approve the `pypi` and `pypi-widget` deployments in the run.
+5. Review and publish the drafted GitHub Release.
+
+One-time infrastructure (already configured for this repo): the four GitHub
+Environments above, and a pending/registered trusted publisher per project on
+each index.
