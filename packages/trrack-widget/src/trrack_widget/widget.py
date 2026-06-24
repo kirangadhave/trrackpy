@@ -7,7 +7,7 @@ import contextlib
 import datetime as dt
 import pathlib
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import anywidget
 import traitlets
@@ -54,6 +54,8 @@ class Trrackable(anywidget.AnyWidget):
     nodes = traitlets.Dict().tag(sync=True)
     current_id = traitlets.Unicode().tag(sync=True)
     _relabel = traitlets.Dict(allow_none=True).tag(sync=True)
+    panel_layout = traitlets.Unicode("docked").tag(sync=True)
+    expanded = traitlets.Bool(default_value=True).tag(sync=True)
 
     _esm = _STATIC / "controls.js"
 
@@ -67,6 +69,8 @@ class Trrackable(anywidget.AnyWidget):
         store: Store | None = None,
         restore: dict | None = None,
         label_formatter: Callable[[dict, dict], str] | None = None,
+        panel_layout: Literal["docked", "floating"] = "docked",
+        expanded: bool = True,
         **kwargs: Any,
     ) -> None:
         """Wrap ``target``, recording its synced traits into a provenance graph.
@@ -86,9 +90,16 @@ class Trrackable(anywidget.AnyWidget):
                 keyed by tracked trait name. When omitted, a before→after diff
                 of the changed traits is used. Useful for shortening noisy
                 values, e.g. rounding floats.
+            panel_layout: ``"docked"`` (default) places the controls beside the
+                widget, always visible; ``"floating"`` overlays a collapsible
+                panel on the right of the output.
+            expanded: Initial open state of the floating panel. Ignored when
+                ``panel_layout="docked"``.
             kwargs: Forwarded to :class:`anywidget.AnyWidget`.
         """
         super().__init__(**kwargs)
+        self.panel_layout = panel_layout
+        self.expanded = expanded
         self._target = target
         self._label_formatter = label_formatter
         self._controls_view: Any = None

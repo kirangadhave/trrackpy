@@ -258,3 +258,27 @@ def test_jupyter_mimebundle_renders_composite(monkeypatch):
     bundle = tt._repr_mimebundle_()
     assert bundle is not None
     assert captured["children"] == [counter, tt]
+
+
+def test_panel_layout_defaults_to_docked_and_expanded_true():
+    counter = Counter()
+    tt = Trrackable(counter)
+    assert tt.panel_layout == "docked"
+    assert tt.expanded is True
+
+
+def test_panel_layout_and_expanded_are_configurable():
+    counter = Counter()
+    tt = Trrackable(counter, panel_layout="floating", expanded=False)
+    assert tt.panel_layout == "floating"
+    assert tt.expanded is False
+
+
+def test_panel_layout_and_expanded_are_not_recorded():
+    # UI state must never leak into the provenance payload.
+    counter = Counter()
+    tt = Trrackable(counter, panel_layout="floating", expanded=False)
+    payload = tt.to_dict()
+    assert "panel_layout" not in payload
+    assert "expanded" not in payload
+    assert payload["tracked"] == ["count"]
