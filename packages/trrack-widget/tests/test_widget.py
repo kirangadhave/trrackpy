@@ -4,6 +4,7 @@ import json
 import time
 
 import anywidget
+import pytest
 import traitlets
 
 from trrack_widget import Trrackable
@@ -201,3 +202,59 @@ def test_no_persist_without_store(tmp_path):
     counter.count = 1
     tt.flush_persist()
     assert list(tmp_path.iterdir()) == []
+
+
+def test_bare_widget_displays_as_view():
+    pytest.importorskip("marimo")
+    counter = Counter()
+    tt = Trrackable(counter)
+
+    # The display hook renders the same composite as .view (a marimo hstack).
+    assert type(tt._display_()) is type(tt.view)
+    # .widget and .controls remain individual viewers.
+    assert tt.widget is counter
+    assert tt.controls is not tt
+
+
+def test_controls_viewer_is_stable_and_recursion_free():
+    pytest.importorskip("marimo")
+    from marimo._output.formatting import try_format
+
+    counter = Counter()
+    tt = Trrackable(counter)
+
+    # The controls viewer is cached and is not the Trrackable itself, so it
+    # carries no _display_ hook — embedding it in the view cannot recurse.
+    assert tt.controls is tt.controls
+    assert tt.controls is not tt
+
+    # Formatting a bare Trrackable resolves _display_ -> view -> controls
+    # without re-entering _display_ (a recursion bug would raise here).
+    formatted = try_format(tt)
+    assert formatted.data
+
+
+def test_jupyter_mimebundle_renders_composite(monkeypatch):
+    ipywidgets = pytest.importorskip("ipywidgets")
+    # Force the non-marimo (Jupyter) display path.
+    import trrack_widget.widget as widget_mod
+
+    monkeypatch.setattr(widget_mod, "_in_marimo", lambda: False)
+
+    captured = {}
+    real_hbox = ipywidgets.HBox
+
+    def spy_hbox(children, *args, **kwargs):
+        captured["children"] = children
+        return real_hbox(children, *args, **kwargs)
+
+    monkeypatch.setattr(ipywidgets, "HBox", spy_hbox)
+
+    counter = Counter()
+    tt = Trrackable(counter)
+
+    # Bare display builds an HBox of the target and the controls, and returns
+    # without recursing back into this hook (a recursion bug would raise).
+    bundle = tt._repr_mimebundle_()
+    assert bundle is not None
+    assert captured["children"] == [counter, tt]
