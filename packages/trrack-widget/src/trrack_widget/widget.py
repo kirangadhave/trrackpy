@@ -17,7 +17,7 @@ from trrack.persist import JsonFileStore, Store
 
 if TYPE_CHECKING:
     import os
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 _STATIC = pathlib.Path(__file__).parent / "static"
 
@@ -52,6 +52,7 @@ class Trrackable(anywidget.AnyWidget):
         persist_path: str | os.PathLike[str] | None = None,
         store: Store | None = None,
         restore: dict | None = None,
+        label_formatter: Callable[[dict, dict], str] | None = None,
         **kwargs: Any,
     ) -> None:
         """Wrap ``target``, recording its synced traits into a provenance graph.
@@ -66,10 +67,16 @@ class Trrackable(anywidget.AnyWidget):
                 is authoritative and is adopted on construction.
             restore: A :meth:`to_dict` payload to rebuild from directly, instead
                 of inferring state from ``target`` or loading from a store.
+            label_formatter: Builds a node's label from the previous and new
+                tracked-trait states, ``(old, new) -> str``. Both are dicts
+                keyed by tracked trait name. When omitted, a before→after diff
+                of the changed traits is used. Useful for shortening noisy
+                values, e.g. rounding floats.
             kwargs: Forwarded to :class:`anywidget.AnyWidget`.
         """
         super().__init__(**kwargs)
         self._target = target
+        self._label_formatter = label_formatter
         # One guard for both observers: recording must not fire on playback,
         # and playback must not fire on the current_id bump that ends a record.
         self._internal = False
@@ -140,7 +147,13 @@ class Trrackable(anywidget.AnyWidget):
             self.current_id = snapshot["current_id"]
 
     def _commit(self) -> None:
-        node = self._tree.commit(self._snapshot(), now=_now())
+        new_state = self._snapshot()
+        label = (
+            self._label_formatter(self._tree.current.state, new_state)
+            if self._label_formatter is not None
+            else None
+        )
+        node = self._tree.commit(new_state, now=_now(), label=label)
         self.nodes = self._tree.to_dict()["nodes"]
         with self._guard():
             self.current_id = node.id
@@ -296,9 +309,15 @@ class Trrackable(anywidget.AnyWidget):
         target: Any,
         *,
         debounce_ms: int = 0,
+        label_formatter: Callable[[dict, dict], str] | None = None,
     ) -> Trrackable:
         """Rebuild a Trrackable from :meth:`to_dict` output, wrapping ``target``."""
-        return cls(target, debounce_ms=debounce_ms, restore=data)
+        return cls(
+            target,
+            debounce_ms=debounce_ms,
+            label_formatter=label_formatter,
+            restore=data,
+        )
 
     @property
     def widget(self) -> Any:

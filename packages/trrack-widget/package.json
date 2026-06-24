@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild js/controls.tsx --bundle --format=esm --minify --outdir=src/trrack_widget/static",
-    "dev": "esbuild js/controls.tsx --bundle --format=esm --sourcemap=inline --watch --outdir=src/trrack_widget/static",
+    "build": "esbuild js/controls.tsx --bundle --format=esm --minify --alias:react=preact/compat --alias:react-dom=preact/compat --alias:react/jsx-runtime=preact/jsx-runtime --outdir=src/trrack_widget/static",
+    "dev": "esbuild js/controls.tsx --bundle --format=esm --sourcemap=inline --watch --alias:react=preact/compat --alias:react-dom=preact/compat --alias:react/jsx-runtime=preact/jsx-runtime --outdir=src/trrack_widget/static",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint js",
     "format": "oxfmt --write js",
@@ -13,8 +13,7 @@
   "dependencies": {
     "@anywidget/react": "^0.2.2",
     "lucide-react": "^1.21.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "preact": "^10.29.2"
   },
   "devDependencies": {
     "@anywidget/types": "^0.2.0",
@@ -23,6 +22,8 @@
     "esbuild": "^0.24.0",
     "oxfmt": "^0.1.0",
     "oxlint": "^0.15.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.6.0"
   },
   "pnpm": {

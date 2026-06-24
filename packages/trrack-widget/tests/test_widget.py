@@ -73,6 +73,26 @@ def test_label_relabels_current_node():
     assert tt.nodes[tt.current_id]["label"] == "checkpoint"
 
 
+def test_label_formatter_builds_node_labels():
+    counter = Counter()
+    tt = Trrackable(
+        counter,
+        label_formatter=lambda old, new: f"{old['count']}=>{new['count']}",
+    )
+    counter.count = 1
+    counter.count = 2
+    labels = [tt.nodes[nid]["label"] for nid in tt.nodes]
+    assert "0=>1" in labels
+    assert "1=>2" in labels
+
+
+def test_default_label_used_without_formatter():
+    counter = Counter()
+    tt = Trrackable(counter)
+    counter.count = 1
+    assert tt.nodes[tt.current_id]["label"] == "count: 0 → 1"
+
+
 def test_debounce_coalesces_rapid_changes():
     counter = Counter()
     tt = Trrackable(counter, debounce_ms=50)
