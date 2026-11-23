@@ -9,7 +9,21 @@ from __future__ import annotations
 from importlib.metadata import version
 
 from .graph import Node, ProvenanceGraph
-from .persist import JsonFileStore, Store
+from .persist import (
+    JsonFileStore,
+    Store,
+    graph_envelope,
+    read_envelope,
+    state_envelope,
+)
 
-__all__ = ["JsonFileStore", "Node", "ProvenanceGraph", "Store"]
+__all__ = [
+    "JsonFileStore",
+    "Node",
+    "ProvenanceGraph",
+    "Store",
+    "graph_envelope",
+    "read_envelope",
+    "state_envelope",
+]
 __version__ = version("trrack")
