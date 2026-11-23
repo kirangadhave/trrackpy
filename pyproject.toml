@@ -7,10 +7,11 @@ trrack = { workspace = true }
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
-    "marimo[recommended]>=0.23.10",
+    "marimo[recommended]>=0.23.14",
     "ruff>=0.15.9",
     "ty",
     "watchfiles>=0.24.0",
+    "wigglystuff>=0.5.14",
 ]
 
 [tool.ruff]
@@ -38,6 +39,14 @@ required-imports = ["from __future__ import annotations"]
 [tool.ruff.lint.per-file-ignores]
 "**/tests/*" = ["D", "S101", "ANN", "SLF001", "PLR2004", "INP001", "PLC0415"]
 "trrack-widget-demo.py" = ["ALL"]
+# The examples folder is on marimo's path, not a package.
+"examples/*.py" = ["INP001"]
+# marimo owns the layout of its notebook files.
+"examples/*/*.py" = ["ALL"]
+
+# Lets the example notebooks import the widgets they share.
+[tool.marimo.runtime]
+pythonpath = ["examples"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages/trrack/tests", "packages/trrack-widget/tests"]
