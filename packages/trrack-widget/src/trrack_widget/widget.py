@@ -14,15 +14,13 @@ import traitlets
 
 from trrack import Node, ProvenanceGraph
 from trrack.persist import JsonFileStore, Store
+from trrack_widget._persist import CoalescedWriter, infer_traits
 
 if TYPE_CHECKING:
     import os
     from collections.abc import Callable, Iterator
 
 _STATIC = pathlib.Path(__file__).parent / "static"
-
-# A burst of mutations within this window collapses into a single store write.
-_PERSIST_DEBOUNCE_MS = 150
 
 
 def _now() -> str:
@@ -105,29 +103,21 @@ class Trrackable(anywidget.AnyWidget):
         # fires on a worker thread that lacks marimo's thread-local runtime
         # context, so the actual commit is marshaled back onto this loop.
         self._loop: asyncio.AbstractEventLoop | None = None
-        if store is not None:
-            self._store: Store | None = store
-        elif persist_path is not None:
-            self._store = JsonFileStore(persist_path)
-        else:
-            self._store = None
-        self._persist_timer: threading.Timer | None = None
-        self._persist_lock = threading.Lock()
+        if store is None and persist_path is not None:
+            store = JsonFileStore(persist_path)
+        self._writer: CoalescedWriter | None = (
+            CoalescedWriter(store, self.to_dict) if store is not None else None
+        )
 
         saved = restore
-        if saved is None and self._store is not None:
-            saved = self._store.load()
+        if saved is None and store is not None:
+            saved = store.load()
         if saved is not None:
             self._tracked = list(saved["tracked"])
             self._tree = ProvenanceGraph.from_dict(saved["tree"])
         else:
             if traits is None:
-                base = set(anywidget.AnyWidget.class_traits(sync=True))
-                traits = [
-                    name
-                    for name in target.traits(sync=True)
-                    if name not in base and not name.startswith("_")
-                ]
+                traits = infer_traits(target)
             self._tracked = list(traits)
             self._tree = ProvenanceGraph(self._snapshot(), now=_now())
 
@@ -141,8 +131,8 @@ class Trrackable(anywidget.AnyWidget):
 
         # Write the initial state only when we created it, so loading an
         # existing store does not immediately rewrite identical data.
-        if self._store is not None and saved is None:
-            self._persist_now()
+        if self._writer is not None and saved is None:
+            self._writer.flush()
 
     @contextlib.contextmanager
     def _guard(self) -> Iterator[None]:
@@ -220,44 +210,13 @@ class Trrackable(anywidget.AnyWidget):
             self._commit()
 
     def _schedule_persist(self) -> None:
-        if self._store is None:
-            return
-        try:
-            self._loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._loop = None
-        with self._persist_lock:
-            if self._persist_timer is not None:
-                self._persist_timer.cancel()
-            timer = threading.Timer(
-                _PERSIST_DEBOUNCE_MS / 1000, self._persist_debounced
-            )
-            timer.daemon = True
-            self._persist_timer = timer
-            timer.start()
-
-    def _persist_debounced(self) -> None:
-        with self._persist_lock:
-            self._persist_timer = None
-        loop = self._loop
-        if loop is not None and loop.is_running():
-            loop.call_soon_threadsafe(self._persist_now)
-        else:
-            self._persist_now()
-
-    def _persist_now(self) -> None:
-        if self._store is None:
-            return
-        self._store.save(self.to_dict())
+        if self._writer is not None:
+            self._writer.schedule()
 
     def flush_persist(self) -> None:
         """Immediately write any pending coalesced state to the store."""
-        with self._persist_lock:
-            timer = self._persist_timer
-            self._persist_timer = None
-        if timer is not None:
-            timer.cancel()
-        self._persist_now()
+        if self._writer is not None:
+            self._writer.flush()
 
     def _apply(self, node: Node) -> None:
         with self._guard():
