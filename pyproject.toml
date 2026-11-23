@@ -13,6 +13,10 @@ dev = [
     "watchfiles>=0.24.0",
     "wigglystuff>=0.5.14",
 ]
+docs = [
+    "mkdocstrings-python>=2.0.9",
+    "zensical>=0.0.67",
+]
 
 [tool.ruff]
 line-length = 88

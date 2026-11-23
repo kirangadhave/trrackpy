@@ -7,20 +7,21 @@ request.
 
 trrackpy is a [uv](https://docs.astral.sh/uv/) workspace with two packages:
 
-- `packages/trrack` — the **core**: a pure-Python branching provenance model
-  (`ProvenanceGraph`) plus a `Store` persistence seam. Zero UI dependencies.
-- `packages/trrack-widget` — the **widget**: an [anywidget](https://anywidget.dev)
-  that wraps any widget with time-travel controls (`Trrackable`). It depends on
-  `trrack` through the local workspace source, never the published package.
+- `packages/trrack` is the core: the branching history model
+  (`ProvenanceGraph`) and the `Store` protocol for saving it. Pure Python, no
+  UI dependencies.
+- `packages/trrack-widget` has the two [anywidget](https://anywidget.dev)
+  wrappers: `Persisted` and `Trrackable`. It uses `trrack` from the local
+  workspace, never the published package.
+- `examples` has runnable marimo notebooks.
 
-The split is deliberate: the core can be used on its own to track the history of
-anything, and the widget is just one consumer of it.
+The core works on its own, to track the history of anything. The widgets are
+one use of it.
 
 ## Setup
 
-The frontend bundle (`src/trrack_widget/static/controls.js`) is a gitignored
-build artifact. Build it **before** `uv sync` so the editable install can ship
-it:
+The frontend bundles in `src/trrack_widget/static/` are gitignored build
+output. Build them before `uv sync`, so the editable install includes them:
 
 ```sh
 cd packages/trrack-widget
@@ -32,17 +33,35 @@ uv sync
 
 ## Frontend dev loop
 
-The controls UI is a React + TypeScript component in
-`packages/trrack-widget/js/controls.tsx`, bundled by esbuild. Rebuild on every
-save with:
+The frontend is TypeScript in `packages/trrack-widget/js`, bundled by esbuild:
+
+- `controls.tsx`: the history controls for `Trrackable` (Preact).
+- `persisted.ts`: the view for `Persisted`.
+- `compose.ts`: what both share. It shows the wrapped widget and the error
+  line.
+
+Rebuild on every save with:
 
 ```sh
 cd packages/trrack-widget
 pnpm run dev
 ```
 
-With `ANYWIDGET_HMR=1 uv run marimo edit trrack-widget-demo.py` the rebuilt
-bundle hot-swaps into active cells without a kernel restart.
+With `ANYWIDGET_HMR=1 uv run marimo edit examples/trrackable/files.py`, the
+rebuilt bundle loads into the open notebook without a kernel restart.
+
+## Docs
+
+The site is built with [Zensical](https://zensical.org) from `docs/pages` and
+`mkdocs.yml`. The API reference comes from the docstrings.
+
+```sh
+uv run --group docs zensical serve    # preview with live reload
+uv run --group docs zensical build    # write the site to ./site
+```
+
+The `Docs` workflow publishes the site to GitHub Pages. Run it by hand from
+the Actions tab. The release workflow also runs it as its last job.
 
 ## Checks before a PR
 
@@ -73,9 +92,10 @@ uvx pre-commit run --all-files
 
 - A change to the model or its algorithms goes in `packages/trrack`.
 - UI and widget wiring goes in `packages/trrack-widget`.
-- A new persistence backend implements the `trrack.Store` protocol
-  (`save(dict) -> None`, `load() -> dict | None`) — no registry or plugin
-  machinery to touch.
+- A new store is a class with `save(dict) -> None` and
+  `load() -> dict | None`. See the `trrack.Store` protocol.
+- A new example notebook goes in `examples/persisted` or
+  `examples/trrackable`.
 
 ## Releasing
 
