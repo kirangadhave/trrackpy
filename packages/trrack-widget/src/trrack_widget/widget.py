@@ -1,24 +1,20 @@
-"""The Trrackable anywidget: records a target widget's state into a graph."""
+"""The Trrackable widget: records a widget's state as a history you can navigate."""
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import datetime as dt
 import pathlib
-import threading
 from typing import TYPE_CHECKING, Any
 
-import anywidget
 import traitlets
 
 from trrack import Node, ProvenanceGraph
-from trrack.persist import JsonFileStore, Store
-from trrack_widget._persist import CoalescedWriter, infer_traits
+from trrack.persist import Store, graph_envelope, read_envelope
+from trrack_widget._base import TargetWidget, infer_traits
+from trrack_widget._persist import CoalescedWriter, Debouncer
 
 if TYPE_CHECKING:
-    import os
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
 _STATIC = pathlib.Path(__file__).parent / "static"
 
@@ -27,26 +23,21 @@ def _now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
-def _in_marimo() -> bool:
-    """Whether code is running inside a live marimo kernel.
+class Trrackable(TargetWidget):
+    """Record a widget's state as a branching history with undo and redo.
 
-    marimo being importable is not enough — it may be installed alongside a
-    Jupyter kernel. Display routing differs by host, so the check must be the
-    runtime, not the import.
-    """
-    try:
-        import marimo as mo  # noqa: PLC0415
-    except ImportError:
-        return False
-    return mo.running_in_notebook()
+    Wraps ``target`` and adds a node to the history each time a tracked trait
+    changes. Displaying a ``Trrackable`` shows the target with the history
+    controls next to it. If a save fails, the error appears under them.
 
+    Examples:
+        ```python
+        from trrack_widget import Trrackable
 
-class Trrackable(anywidget.AnyWidget):
-    """Record a target widget's state as a branching provenance tree.
-
-    Holds a direct Python reference to ``target`` and a :class:`ProvenanceGraph`
-    that is the single source of truth. ``nodes`` and ``current_id`` are synced
-    to the frontend, which is a thin view/controller over the tree.
+        tracked = Trrackable(counter)
+        tracked  # displays the counter and its history
+        tracked.undo()
+        ```
     """
 
     nodes = traitlets.Dict().tag(sync=True)
@@ -61,89 +52,67 @@ class Trrackable(anywidget.AnyWidget):
         traits: list[str] | None = None,
         *,
         debounce_ms: int = 0,
-        persist_path: str | os.PathLike[str] | None = None,
         store: Store | None = None,
         restore: dict | None = None,
         label_formatter: Callable[[dict, dict], str] | None = None,
         **kwargs: Any,
     ) -> None:
-        """Wrap ``target``, recording its synced traits into a provenance graph.
+        """Wrap ``target`` and record its tracked traits.
 
         Args:
-            target: The widget whose state is tracked.
-            traits: Trait names to record; inferred from ``target`` if omitted.
-            debounce_ms: Collapse a burst of changes within this window into one
-                commit; ``0`` records every change.
-            persist_path: Convenience for ``store=JsonFileStore(persist_path)``.
-            store: A persistence backend. When it holds saved state, that state
-                is authoritative and is adopted on construction.
-            restore: A :meth:`to_dict` payload to rebuild from directly, instead
-                of inferring state from ``target`` or loading from a store.
-            label_formatter: Builds a node's label from the previous and new
-                tracked-trait states, ``(old, new) -> str``. Both are dicts
-                keyed by tracked trait name. When omitted, a before→after diff
-                of the changed traits is used. Useful for shortening noisy
-                values, e.g. rounding floats.
-            kwargs: Forwarded to :class:`anywidget.AnyWidget`.
+            target (Any): The widget to track. It must be an anywidget.
+            traits (list[str], optional): Trait names to record. Defaults to
+                the target's public synced traits.
+            debounce_ms (int, optional): Record a burst of changes within this
+                many milliseconds as one node. ``0`` records every change.
+                Useful for sliders.
+            store (Store, optional): Where to save, such as
+                ``JsonFileStore("state.json")``. When the store already holds
+                a history, that history is loaded. State saved by
+                ``Persisted`` loads as the first node of a new history.
+            restore (dict, optional): A ``to_dict()`` payload to load, in
+                place of the store.
+            label_formatter (Callable[[dict, dict], str], optional): Builds a
+                node's label from the old and new tracked values. Defaults to
+                a list of what changed, such as ``count: 1 → 2``.
+            **kwargs (Any): Forwarded to ``anywidget.AnyWidget``.
         """
-        super().__init__(**kwargs)
-        self._target = target
+        super().__init__(target, **kwargs)
         self._label_formatter = label_formatter
-        self._controls_view: Any = None
-        # One guard for both observers: recording must not fire on playback,
-        # and playback must not fire on the current_id bump that ends a record.
-        self._internal = False
-        # When > 0, a burst of changes within this many milliseconds collapses
-        # into a single commit. Useful for high-frequency sources like slider
-        # drags.
-        self._debounce_ms = debounce_ms
-        self._debounce_timer: threading.Timer | None = None
-        self._debounce_lock = threading.Lock()
-        # Captured when a commit is scheduled (on the kernel thread). The timer
-        # fires on a worker thread that lacks marimo's thread-local runtime
-        # context, so the actual commit is marshaled back onto this loop.
-        self._loop: asyncio.AbstractEventLoop | None = None
-        if store is None and persist_path is not None:
-            store = JsonFileStore(persist_path)
-        self._writer: CoalescedWriter | None = (
-            CoalescedWriter(store, self.to_dict) if store is not None else None
+        self._commit_debouncer = (
+            Debouncer(debounce_ms, self._commit) if debounce_ms > 0 else None
+        )
+        self._writer = (
+            CoalescedWriter(store, self.to_dict, self._on_save_result)
+            if store is not None
+            else None
         )
 
         saved = restore
         if saved is None and store is not None:
             saved = store.load()
-        if saved is not None:
-            self._tracked = list(saved["tracked"])
-            self._tree = ProvenanceGraph.from_dict(saved["tree"])
+        kind, value = read_envelope(saved) if saved is not None else (None, {})
+        if kind == "graph":
+            self._tracked = list(value["tracked"])
+            self._tree = ProvenanceGraph.from_dict(value["tree"])
         else:
-            if traits is None:
-                traits = infer_traits(target)
-            self._tracked = list(traits)
-            self._tree = ProvenanceGraph(self._snapshot(), now=_now())
+            # A state payload holds values only, so the tracked traits come
+            # from the caller or from the target.
+            self._tracked = list(traits) if traits is not None else infer_traits(target)
+            self._set_values(value)
+            self._tree = ProvenanceGraph(self.state, now=_now())
 
         self._sync_tree()
-        with self._guard():
-            for name, value in self._tree.current.state.items():
-                setattr(self._target, name, value)
-        target.observe(self._on_target_change, names=self._tracked)
+        self._set_values(self._tree.current.state)
+        self._follow_target()
         self.observe(self._on_current_id_change, names="current_id")
         self.observe(self._on_relabel, names="_relabel")
 
-        # Write the initial state only when we created it, so loading an
-        # existing store does not immediately rewrite identical data.
+        # Write on construction only when the store is empty. Loading leaves
+        # the store as it was, so opening a saved file never rewrites it. A
+        # store that fails here must not stop the widget from loading.
         if self._writer is not None and saved is None:
-            self._writer.flush()
-
-    @contextlib.contextmanager
-    def _guard(self) -> Iterator[None]:
-        self._internal = True
-        try:
-            yield
-        finally:
-            self._internal = False
-
-    def _snapshot(self) -> dict:
-        return {name: getattr(self._target, name) for name in self._tracked}
+            self._writer.flush_quietly()
 
     def _sync_tree(self) -> None:
         snapshot = self._tree.to_dict()
@@ -152,88 +121,50 @@ class Trrackable(anywidget.AnyWidget):
             self.current_id = snapshot["current_id"]
 
     def _commit(self) -> None:
-        new_state = self._snapshot()
+        new_state = self.state
         label = (
             self._label_formatter(self._tree.current.state, new_state)
             if self._label_formatter is not None
             else None
         )
-        node = self._tree.commit(new_state, now=_now(), label=label)
-        self.nodes = self._tree.to_dict()["nodes"]
-        with self._guard():
-            self.current_id = node.id
+        self._tree.commit(new_state, now=_now(), label=label)
+        self._sync_tree()
         self._schedule_persist()
 
     def _on_target_change(self, _change: dict) -> None:
         if self._internal:
             return
-        if self._debounce_ms > 0:
-            self._schedule_commit()
+        if self._commit_debouncer is not None:
+            self._commit_debouncer.schedule()
         else:
             self._commit()
 
-    def _schedule_commit(self) -> None:
-        try:
-            self._loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._loop = None
-        with self._debounce_lock:
-            if self._debounce_timer is not None:
-                self._debounce_timer.cancel()
-            timer = threading.Timer(self._debounce_ms / 1000, self._commit_debounced)
-            timer.daemon = True
-            self._debounce_timer = timer
-            timer.start()
-
-    def _commit_debounced(self) -> None:
-        with self._debounce_lock:
-            self._debounce_timer = None
-        loop = self._loop
-        if loop is not None and loop.is_running():
-            loop.call_soon_threadsafe(self._commit)
-        else:
-            self._commit()
-
-    def _cancel_pending_commit(self) -> None:
-        with self._debounce_lock:
-            if self._debounce_timer is not None:
-                self._debounce_timer.cancel()
-                self._debounce_timer = None
+    def _cancel_pending_commit(self) -> bool:
+        return self._commit_debouncer is not None and self._commit_debouncer.cancel()
 
     def flush(self) -> None:
-        """Immediately commit a pending debounced change, if any."""
-        with self._debounce_lock:
-            timer = self._debounce_timer
-            self._debounce_timer = None
-        if timer is not None:
-            timer.cancel()
+        """Record a pending debounced change now, if there is one."""
+        if self._cancel_pending_commit():
             self._commit()
 
     def _schedule_persist(self) -> None:
         if self._writer is not None:
             self._writer.schedule()
 
-    def flush_persist(self) -> None:
-        """Immediately write any pending coalesced state to the store."""
-        if self._writer is not None:
-            self._writer.flush()
+    def _unfollow_target(self) -> None:
+        self.flush()
+        super()._unfollow_target()
 
     def _apply(self, node: Node) -> None:
-        with self._guard():
-            self.current_id = node.id
-            for name, value in node.state.items():
-                setattr(self._target, name, value)
+        self._sync_tree()
+        self._set_values(node.state)
         self._schedule_persist()
 
     def _on_current_id_change(self, change: dict) -> None:
         if self._internal:
             return
         self._cancel_pending_commit()
-        node = self._tree.go_to(change["new"])
-        with self._guard():
-            for name, value in node.state.items():
-                setattr(self._target, name, value)
-        self._schedule_persist()
+        self._apply(self._tree.go_to(change["new"]))
 
     def _on_relabel(self, change: dict) -> None:
         request = change["new"]
@@ -243,38 +174,48 @@ class Trrackable(anywidget.AnyWidget):
         text = request.get("text")
         if node_id is None or text is None:
             return
-        self._tree.relabel(text, node_id)
-        self.nodes = self._tree.to_dict()["nodes"]
-        self._schedule_persist()
+        self.label(text, node_id)
 
     def undo(self) -> None:
-        """Move to the parent state, applying it to the target."""
+        """Go back one step, and set the target to that state."""
         self._cancel_pending_commit()
         node = self._tree.undo()
         if node is not None:
             self._apply(node)
 
     def redo(self) -> None:
-        """Move to the newest child state, applying it to the target."""
+        """Go forward to the newest next step, and set the target to it."""
         self._cancel_pending_commit()
         node = self._tree.redo()
         if node is not None:
             self._apply(node)
 
     def go_to(self, node_id: str) -> None:
-        """Jump to ``node_id``, applying its state to the target."""
+        """Jump to a node, and set the target to its state.
+
+        Args:
+            node_id (str): The id of the node to go to.
+        """
         self._cancel_pending_commit()
         self._apply(self._tree.go_to(node_id))
 
     def label(self, text: str, node_id: str | None = None) -> None:
-        """Set the label of ``node_id`` (default: current node) to ``text``."""
+        """Rename a node.
+
+        Args:
+            text (str): The new label.
+            node_id (str, optional): The node to rename. Defaults to the
+                current node.
+        """
         self._tree.relabel(text, node_id)
-        self.nodes = self._tree.to_dict()["nodes"]
+        self._sync_tree()
         self._schedule_persist()
 
     def to_dict(self) -> dict:
-        """Serialize the tracked traits and the whole graph."""
-        return {"tracked": list(self._tracked), "tree": self._tree.to_dict()}
+        """Serialize the tracked trait names and the whole history."""
+        return graph_envelope(
+            {"tracked": list(self._tracked), "tree": self._tree.to_dict()}
+        )
 
     @classmethod
     def from_dict(
@@ -285,84 +226,21 @@ class Trrackable(anywidget.AnyWidget):
         debounce_ms: int = 0,
         label_formatter: Callable[[dict, dict], str] | None = None,
     ) -> Trrackable:
-        """Rebuild a Trrackable from :meth:`to_dict` output, wrapping ``target``."""
+        """Rebuild a ``Trrackable`` from ``to_dict()`` output.
+
+        Args:
+            data (dict): The saved payload.
+            target (Any): The widget to track. It is set to the saved state.
+            debounce_ms (int, optional): See ``Trrackable``.
+            label_formatter (Callable[[dict, dict], str], optional): See
+                ``Trrackable``.
+
+        Returns:
+            Trrackable: A widget that tracks ``target`` with the saved history.
+        """
         return cls(
             target,
             debounce_ms=debounce_ms,
             label_formatter=label_formatter,
             restore=data,
         )
-
-    @property
-    def widget(self) -> Any:
-        """The wrapped target widget, for display."""
-        return self._target
-
-    @property
-    def controls(self) -> Any:
-        """The provenance-tree control UI on its own.
-
-        Under marimo this is a ``mo.ui.anywidget`` wrapper around the control
-        widget rather than the :class:`Trrackable` itself. The wrapper renders
-        the same controls but has no display hook, so it can be embedded in
-        :attr:`view` — and displayed by itself — without re-entering
-        :meth:`_display_` (which would otherwise recurse, since the view embeds
-        the controls). Falls back to the raw widget when marimo is absent.
-        """
-        try:
-            import marimo as mo  # noqa: PLC0415
-        except ImportError:
-            return self
-        if self._controls_view is None:
-            self._controls_view = mo.ui.anywidget(self)
-        return self._controls_view
-
-    @property
-    def view(self) -> Any:
-        """Target widget and controls side by side, widget filling the row.
-
-        ``widths=[1, 0]`` lets the widget grow into the space the controls
-        don't use. Passing the controls as a live object (rather than embedding
-        their rendered HTML) keeps them a hydrated marimo element. Falls back to
-        ``ipywidgets.HBox`` when marimo is not installed.
-        """
-        try:
-            import marimo as mo  # noqa: PLC0415
-        except ImportError:
-            import ipywidgets  # noqa: PLC0415
-
-            return ipywidgets.HBox([self.widget, self.controls])
-
-        return mo.hstack(
-            [self.widget, self.controls],
-            justify="start",
-            align="start",
-            widths=[1, 0],
-        )
-
-    def _display_(self) -> Any:
-        """Render a bare ``Trrackable`` as :attr:`view` under marimo.
-
-        This is marimo's display hook, consulted before any other formatter, so
-        returning the widget in a cell shows the target and its controls
-        together. ``.widget`` and ``.controls`` still render each half alone.
-        """
-        return self.view
-
-    def _repr_mimebundle_(self, **kwargs: Any) -> Any:
-        """Jupyter display hook: a bare ``Trrackable`` renders as :attr:`view`.
-
-        marimo renders via :meth:`_display_` and only reaches this hook to sync
-        widget state, where the composite must not be built — so under marimo
-        this defers to the plain control-widget bundle. In other hosts it is the
-        display path, so it emits an ``HBox`` of the target and controls. The box
-        references ``self`` by model id, so the frontend draws the controls
-        without re-entering this hook.
-        """
-        if _in_marimo():
-            return super()._repr_mimebundle_(**kwargs)
-        try:
-            import ipywidgets  # noqa: PLC0415
-        except ImportError:
-            return super()._repr_mimebundle_(**kwargs)
-        return ipywidgets.HBox([self.widget, self])._repr_mimebundle_(**kwargs)

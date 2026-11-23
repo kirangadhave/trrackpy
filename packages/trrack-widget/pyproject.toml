@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "trrack-widget"
 version = "0.0.1a2"
-description = "anywidget time-travel controls powered by trrack."
+description = "Save and track the state of anywidget widgets: persistence, undo, and redo for marimo and Jupyter."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -14,7 +14,18 @@ dependencies = [
 ]
 license = "BSD-3-Clause"
 authors = [{ name = "Kiran Gadhave" }]
-keywords = ["provenance", "history", "undo", "time-travel", "trrack"]
+keywords = [
+    "anywidget",
+    "marimo",
+    "jupyter",
+    "persist",
+    "state",
+    "provenance",
+    "history",
+    "undo",
+    "time-travel",
+    "trrack",
+]
 classifiers = [
     "License :: OSI Approved :: BSD License",
     "Framework :: Jupyter",
@@ -39,8 +50,14 @@ packages = ["src/trrack_widget"]
 
 [tool.hatch.build.hooks.jupyter-builder]
 build-function = "hatch_jupyter_builder.npm_builder"
-ensured-targets = ["src/trrack_widget/static/controls.js"]
-skip-if-exists = ["src/trrack_widget/static/controls.js"]
+ensured-targets = [
+    "src/trrack_widget/static/controls.js",
+    "src/trrack_widget/static/persisted.js",
+]
+skip-if-exists = [
+    "src/trrack_widget/static/controls.js",
+    "src/trrack_widget/static/persisted.js",
+]
 dependencies = ["hatch-jupyter-builder>=0.5.0"]
 
 [tool.hatch.build.hooks.jupyter-builder.build-kwargs]

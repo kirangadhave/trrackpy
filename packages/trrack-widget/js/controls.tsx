@@ -1,6 +1,7 @@
 import { createRender, useModelState } from "@anywidget/react"
 import { Check, Pencil, Redo2, RotateCcw, Undo2, X } from "lucide-react"
 import { type CSSProperties, type ReactNode, useRef, useState } from "react"
+import { type ComposeContext, showTargetAndStatus } from "./compose"
 
 interface Node {
   id: string
@@ -498,19 +499,34 @@ function Controls() {
 
 const renderApp = createRender(Controls)
 
+type RenderContext = Parameters<typeof renderApp>[0] & ComposeContext
+
 export default {
-  render(ctx: Parameters<typeof renderApp>[0]) {
-    // Mount into our own shadow root so the controls are style-isolated from
-    // the host in every environment. Jupyter renders widgets into light DOM
-    // (host CSS — resets, themes — would otherwise reach our elements); marimo
-    // already wraps plugins in a shadow root but adopts its own stylesheets
-    // into it, so a nested root here simply guarantees the same isolation
-    // everywhere. CSS custom properties still inherit across the boundary, so
-    // host theming continues to apply.
-    const shadow = ctx.el.shadowRoot ?? ctx.el.attachShadow({ mode: "open" })
-    shadow.replaceChildren()
+  render(ctx: RenderContext) {
+    const row = document.createElement("div")
+    row.style.cssText = "display:flex;gap:16px;align-items:flex-start"
+    // The target stays in the light DOM so it keeps the host's own styles.
+    const slot = document.createElement("div")
+    slot.style.cssText = "flex:1;min-width:0"
+    const controlsHost = document.createElement("div")
+    const status = document.createElement("div")
+    row.append(slot, controlsHost)
+    ctx.el.replaceChildren(row, status)
+    const stopStatus = showTargetAndStatus(ctx, slot, status)
+
+    // The controls mount in their own shadow root so they are style-isolated
+    // from the host in every environment. Jupyter renders widgets into light
+    // DOM, where host CSS (resets, themes) would otherwise reach our elements.
+    // CSS custom properties still inherit across the boundary, so host theming
+    // continues to apply.
     const mount = document.createElement("div")
-    shadow.append(mount)
-    return renderApp({ ...ctx, el: mount })
+    controlsHost.attachShadow({ mode: "open" }).append(mount)
+    const cleanupControls = renderApp({ ...ctx, el: mount })
+
+    return async () => {
+      stopStatus()
+      const cleanup = await cleanupControls
+      if (typeof cleanup === "function") await cleanup()
+    }
   },
 }

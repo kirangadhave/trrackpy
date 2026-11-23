@@ -1,12 +1,13 @@
-"""Shared persistence helpers: trait inference and coalesced store writes."""
+"""Debounced callbacks and store writes for the widgets."""
 
 from __future__ import annotations
 
 import asyncio
+import atexit
+import contextlib
 import threading
-from typing import TYPE_CHECKING, Any
-
-import anywidget
+import weakref
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -17,45 +18,26 @@ if TYPE_CHECKING:
 _PERSIST_DEBOUNCE_MS = 150
 
 
-def infer_traits(target: Any) -> list[str]:
-    """Return the trait names of ``target`` that hold its user-facing state.
+class Debouncer:
+    """Run a callback once, after calls to ``schedule`` stop for a while.
 
     Args:
-        target (Any): The widget to inspect.
-
-    Returns:
-        The synced traits of ``target``, without the traits that each anywidget
-        has and without private traits.
-    """
-    base = set(anywidget.AnyWidget.class_traits(sync=True))
-    return [
-        name
-        for name in target.traits(sync=True)
-        if name not in base and not name.startswith("_")
-    ]
-
-
-class CoalescedWriter:
-    """Write a payload to a store, with one write for each burst of changes.
-
-    Args:
-        store (Store): The persistence backend that receives each write.
-        payload (Callable[[], dict]): Builds the data to save. The writer calls
-            it at write time, so each write holds the latest state.
+        delay_ms (float): How long to wait after the last ``schedule`` call.
+        callback (Callable[[], None]): What to run.
     """
 
-    def __init__(self, store: Store, payload: Callable[[], dict]) -> None:
-        self._store = store
-        self._payload = payload
+    def __init__(self, delay_ms: float, callback: Callable[[], None]) -> None:
+        self._delay_s = delay_ms / 1000
+        self._callback = callback
         self._timer: threading.Timer | None = None
         self._lock = threading.Lock()
-        # The timer fires on a worker thread that lacks the thread-local
-        # runtime context of marimo. The write must go back to the loop of the
-        # thread that scheduled it.
+        # The timer fires on a worker thread, which has none of marimo's
+        # thread-local runtime context. The callback runs on the event loop of
+        # the thread that called schedule().
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def schedule(self) -> None:
-        """Start the coalesce window, or restart it if a write is pending."""
+        """Start the wait, or restart it if one is in progress."""
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -63,28 +45,98 @@ class CoalescedWriter:
         with self._lock:
             if self._timer is not None:
                 self._timer.cancel()
-            timer = threading.Timer(_PERSIST_DEBOUNCE_MS / 1000, self._on_timer)
+            timer = threading.Timer(self._delay_s, self._fire)
             timer.daemon = True
             self._timer = timer
             timer.start()
 
-    def flush(self) -> None:
-        """Cancel a pending write and write the payload immediately."""
+    def cancel(self) -> bool:
+        """Drop a pending call.
+
+        Returns:
+            bool: Whether a call was pending.
+        """
         with self._lock:
             timer = self._timer
             self._timer = None
-        if timer is not None:
-            timer.cancel()
-        self._write()
+        if timer is None:
+            return False
+        timer.cancel()
+        return True
 
-    def _on_timer(self) -> None:
+    def _fire(self) -> None:
         with self._lock:
             self._timer = None
         loop = self._loop
         if loop is not None and loop.is_running():
-            loop.call_soon_threadsafe(self._write)
+            loop.call_soon_threadsafe(self._callback)
         else:
+            self._callback()
+
+
+class CoalescedWriter:
+    """Save to a store, writing once per burst of changes.
+
+    Args:
+        store (Store): Where to save.
+        payload (Callable[[], dict]): Builds the data to save. It is called at
+            write time, so each write holds the latest state.
+        on_result (Callable[[Exception | None], None], optional): Called after
+            each write with the error, or ``None`` if the write worked.
+    """
+
+    def __init__(
+        self,
+        store: Store,
+        payload: Callable[[], dict],
+        on_result: Callable[[Exception | None], None] | None = None,
+    ) -> None:
+        self._store = store
+        self._payload = payload
+        self._on_result = on_result
+        self._debouncer = Debouncer(_PERSIST_DEBOUNCE_MS, self.flush_quietly)
+        # A timer write and a direct write can run on different threads. A
+        # store must never see two saves at one time.
+        self._write_lock = threading.Lock()
+        # The timer thread is a daemon, so the interpreter does not wait for
+        # it. Without this, a change made just before exit is never saved.
+        atexit.register(_flush_at_exit, weakref.ref(self))
+
+    def schedule(self) -> None:
+        """Write soon. Calls close together share one write."""
+        self._debouncer.schedule()
+
+    def flush(self) -> None:
+        """Write now, in place of any pending write. Raises if the save fails."""
+        self._debouncer.cancel()
+        self._write()
+
+    def flush_quietly(self) -> None:
+        """Write now, and report a failure through ``on_result`` only."""
+        self._debouncer.cancel()
+        with contextlib.suppress(Exception):
             self._write()
 
+    def flush_if_pending(self) -> None:
+        """Write now if a write is waiting. Reports a failure, never raises."""
+        if self._debouncer.cancel():
+            self.flush_quietly()
+
     def _write(self) -> None:
-        self._store.save(self._payload())
+        with self._write_lock:
+            try:
+                self._store.save(self._payload())
+            except Exception as error:
+                self._report(error)
+                raise
+            self._report(None)
+
+    def _report(self, error: Exception | None) -> None:
+        if self._on_result is not None:
+            self._on_result(error)
+
+
+def _flush_at_exit(writer_ref: weakref.ref[CoalescedWriter]) -> None:
+    writer = writer_ref()
+    if writer is not None:
+        writer.flush_if_pending()

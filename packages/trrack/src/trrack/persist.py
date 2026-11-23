@@ -1,25 +1,22 @@
-"""JSON persistence for provenance payloads.
+"""Saving and loading provenance payloads.
 
-A ``Store`` is the single extension seam: anything with ``save(dict)`` and
-``load() -> dict | None`` can back persistence, so a future backend (a database,
-browser storage, a remote service) is a drop-in without a plugin registry.
-``JsonFileStore`` is the only implementation today.
+A store is any object with ``save(dict)`` and ``load() -> dict | None``, so it
+can keep the payload anywhere: a file, a database, a URL. ``JsonFileStore``
+keeps it in a JSON file.
 
-Each saved payload is an envelope ``{"type": ..., "value": ...}``. The ``type``
-tells a reader which of the two shapes ``value`` has:
+Saved payloads are tagged, ``{"type": ..., "value": ...}``, so a reader knows
+what it loaded:
 
-- ``"graph"``: a serialized ``ProvenanceGraph`` with its full history.
-- ``"state"``: one snapshot of the tracked values, without history.
+- ``"graph"``: a serialized ``ProvenanceGraph``.
+- ``"state"``: the current tracked values, keyed by name.
 
-A payload without a ``type`` key is a bare graph. ``read_envelope`` reads that
-payload as a graph, so a file that has no envelope stays loadable.
+A payload with no ``type`` key but with a ``tree`` is read as a graph.
 
-v1 serializes the entire graph on every save: cost is O(total nodes x snapshot
-size). That is imperceptible at interactive scale (tens-hundreds of small-state
-nodes) and only matters with very large graphs or large per-node state. The
-scaling answer, when needed, is a diff-node model -- store patches between nodes
-with periodic full-state checkpoints, so per-save cost tracks changed state
-rather than total state. Out of scope here; tracked as a future option.
+A store that saves the payload whole never looks inside it. A store that keeps
+plain values in its own shape uses ``to_state`` and ``from_state``.
+
+Each save writes the whole graph, so its cost grows with the number of nodes
+and the size of each snapshot.
 """
 
 from __future__ import annotations
@@ -39,7 +36,7 @@ def graph_envelope(value: dict) -> dict:
     """Wrap a serialized provenance graph in an envelope.
 
     Args:
-        value (dict): The serialized graph, with its full history.
+        value (dict): The serialized graph.
 
     Returns:
         dict: The payload ``{"type": "graph", "value": value}``.
@@ -47,53 +44,103 @@ def graph_envelope(value: dict) -> dict:
     return {"type": _GRAPH, "value": value}
 
 
-def state_envelope(value: dict) -> dict:
-    """Wrap one snapshot of tracked values in an envelope.
+def from_state(state: dict) -> dict:
+    """Turn plain tracked values into a payload a store can return.
+
+    Use it in a store's ``load`` when the store keeps the values in its own
+    shape.
 
     Args:
-        value (dict): The tracked values, keyed by name, without history.
+        state (dict): The tracked values, keyed by name.
 
     Returns:
-        dict: The payload ``{"type": "state", "value": value}``.
+        dict: The payload to return from ``load``.
+
+    Examples:
+        ```python
+        def load(self) -> dict | None:
+            state = self._read_values()
+            return from_state(state) if state else None
+        ```
     """
-    return {"type": _STATE, "value": value}
+    return {"type": _STATE, "value": state}
+
+
+def to_state(payload: dict) -> dict:
+    """Get the plain tracked values out of a saved payload.
+
+    Use it in a store's ``save`` when the store keeps the values in its own
+    shape, such as one URL parameter per value.
+
+    Args:
+        payload (dict): The payload passed to ``save``.
+
+    Returns:
+        dict: The tracked values, keyed by name.
+
+    Raises:
+        ValueError: If the payload is a ``Trrackable`` graph, which does not
+            fit a store of plain values.
+
+    Examples:
+        ```python
+        def save(self, data: dict) -> None:
+            for name, value in to_state(data).items():
+                self._write_value(name, value)
+        ```
+    """
+    kind, value = read_envelope(payload)
+    if kind != _STATE:
+        msg = (
+            "This payload is a Trrackable graph, not plain state. Save it "
+            "whole, or use this store with Persisted."
+        )
+        raise ValueError(msg)
+    return value
 
 
 def read_envelope(data: dict) -> tuple[str, dict]:
     """Return the type and the value of a saved payload.
 
     Args:
-        data (dict): A payload that a ``Store`` loaded. A payload without a
-            ``type`` key is a bare graph.
+        data (dict): A payload that a store loaded.
 
     Returns:
-        tuple[str, dict]: ``("graph", value)`` or ``("state", value)``. For a
-        payload without a ``type`` key, the value is ``data``.
+        tuple[str, dict]: ``("graph", value)`` or ``("state", value)``. A
+        payload with no ``type`` key but with a ``tree`` is a graph, and its
+        value is ``data``.
 
     Raises:
-        ValueError: If ``type`` is not ``"graph"`` or ``"state"``.
+        ValueError: If the payload is not one of those shapes.
 
-    ```python
-    kind, value = read_envelope(store.load())
-    if kind == "state":
-        apply_values(value)
-    ```
+    Examples:
+        ```python
+        kind, value = read_envelope(store.load())
+        if kind == "state":
+            apply_values(value)
+        ```
     """
     if "type" not in data:
+        if "tree" not in data:
+            msg = "Unrecognized saved payload. It has no 'type' key."
+            raise ValueError(msg)
         return _GRAPH, data
-    kind = data["type"]
-    if kind not in (_GRAPH, _STATE):
-        msg = f'Unknown payload type {kind!r}. Use "{_GRAPH}" or "{_STATE}".'
+    kind, value = data["type"], data.get("value")
+    if kind not in (_GRAPH, _STATE) or not isinstance(value, dict):
+        msg = (
+            f"Unrecognized saved payload of type {kind!r}. Expected "
+            f'"{_GRAPH}" or "{_STATE}", with a dict as its value.'
+        )
         raise ValueError(msg)
-    return kind, data["value"]
+    return kind, value
 
 
 @runtime_checkable
 class Store(Protocol):
-    """A persistence backend for a serialized provenance payload."""
+    """A place to keep a saved payload."""
 
     def save(self, data: dict) -> None:
-        """Persist ``data``, replacing any previously saved payload."""
+        """Save ``data``, replacing what was saved before."""
         ...
 
     def load(self) -> dict | None:

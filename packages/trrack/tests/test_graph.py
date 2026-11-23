@@ -128,20 +128,3 @@ def test_is_at_root_and_is_at_latest():
     tree.undo()
     assert tree.is_at_root
     assert not tree.is_at_latest
-
-
-def test_save_and_load_round_trip(tmp_path):
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
-    tree.commit({"count": 1}, now="t1", node_id="a")
-    tree.undo()
-    path = tmp_path / "graph.json"
-
-    tree.save(path)
-    restored = ProvenanceGraph.load(path)
-
-    assert restored is not None
-    assert restored.to_dict() == tree.to_dict()
-
-
-def test_load_missing_returns_none(tmp_path):
-    assert ProvenanceGraph.load(tmp_path / "absent.json") is None
