@@ -52,3 +52,17 @@ cd packages/trrack-widget && pnpm run lint && pnpm run typecheck && cd ../..  # 
 - [Conventional commits](https://www.conventionalcommits.org/).
 - Do not commit the `src/trrack_widget/static/` bundle — it is a gitignored
   build artifact.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in GitHub Issues for `kirangadhave/trrackpy`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
