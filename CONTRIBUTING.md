@@ -151,7 +151,8 @@ environments.
 
 ### Cutting a release
 
-1. Set `version` in both package `pyproject.toml` files to the same value.
+1. Set `version` in both package `pyproject.toml` files to the same value. Set
+   the `trrack` requirement of `trrack-widget` to that version too.
 2. Optional: do a dry run.
     1. Go to Actions, then Release, then Run workflow. Set `target=testpypi`.
     2. Check that both packages appear on test.pypi.org.

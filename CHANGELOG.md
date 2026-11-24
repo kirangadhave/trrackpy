@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+## 0.1.1 - 2026-11-24
+
 ### Added
 
 - `Trrackable` takes `buttons` and `graph` to show or hide the row of buttons and the history graph. Set either one later, such as `tracked.graph = False`.
