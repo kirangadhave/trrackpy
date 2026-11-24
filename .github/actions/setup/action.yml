@@ -1,0 +1,29 @@
+name: Set up the toolchain
+description: Install uv, pnpm, and Node. Optionally build the frontend bundle.
+
+inputs:
+  build-frontend:
+    description: >-
+      Set to "true" to build the trrack-widget frontend bundle. Any `uv run`
+      installs trrack-widget in editable mode, and its build hook needs the
+      compiled bundle, so jobs that run Python code through uv need this.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v7
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 10
+    - uses: actions/setup-node@v7
+      with:
+        node-version: lts/*
+    - if: inputs.build-frontend == 'true'
+      name: Build frontend bundle
+      shell: bash
+      working-directory: packages/trrack-widget
+      run: |
+        pnpm install
+        pnpm run build

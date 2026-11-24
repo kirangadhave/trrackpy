@@ -11,22 +11,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # `uv run` editable-installs trrack-widget, whose build hook runs `pnpm build`,
-  # so these jobs need node/pnpm and a built bundle even though ruff/ty don't
-  # read the compiled JS themselves.
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-      - uses: pnpm/action-setup@v6
+      - uses: ./.github/actions/setup
         with:
-          version: 10
-      - uses: actions/setup-node@v7
-        with:
-          node-version: lts/*
-      - name: Build frontend bundle
-        run: cd packages/trrack-widget && pnpm install && pnpm run build
+          build-frontend: true
       - run: uv run ruff check --output-format=github packages
       - run: uv run ruff format --check packages
 
@@ -34,15 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-      - uses: pnpm/action-setup@v6
+      - uses: ./.github/actions/setup
         with:
-          version: 10
-      - uses: actions/setup-node@v7
-        with:
-          node-version: lts/*
-      - name: Build frontend bundle
-        run: cd packages/trrack-widget && pnpm install && pnpm run build
+          build-frontend: true
       - run: uv run ty check packages
 
   test:
@@ -52,18 +37,9 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-      - uses: pnpm/action-setup@v6
+      - uses: ./.github/actions/setup
         with:
-          version: 10
-      - uses: actions/setup-node@v7
-        with:
-          node-version: lts/*
-      - name: Build frontend bundle
-        run: |
-          cd packages/trrack-widget
-          pnpm install
-          pnpm run build
+          build-frontend: true
       - name: Run tests
         run: uv run pytest -v
         env:
@@ -85,3 +61,16 @@ jobs:
           pnpm run lint
           pnpm run format:check
           pnpm run typecheck
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: Build live notebooks
+        run: docs/live/build.sh
+      - run: uv run --only-group docs zensical build --strict
+      - name: Check the embedded notebooks
+        run: |
+          test -f site/live/trrackable/index.html
+          test -f site/live/persisted/index.html

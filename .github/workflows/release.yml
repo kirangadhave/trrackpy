@@ -41,19 +41,9 @@ jobs:
                   sys.exit(f"Tag {os.environ['REF_NAME']} does not match version {core}")
           print(f"versions OK: {core}")
           PY
-      - uses: astral-sh/setup-uv@v7
-      - uses: pnpm/action-setup@v6
+      - uses: ./.github/actions/setup
         with:
-          version: 10
-      - uses: actions/setup-node@v7
-        with:
-          node-version: lts/*
-      - name: Build frontend bundle
-        run: |
-          cd packages/trrack-widget
-          pnpm install
-          pnpm run build
-          cd ../..
+          build-frontend: true
       - run: uv build --package trrack --out-dir dist-trrack
       - run: uv build --package trrack-widget --out-dir dist-trrack-widget
       - uses: actions/upload-artifact@v4
@@ -67,7 +57,7 @@ jobs:
 
   # One publish job per package: each runs in its own environment so the two
   # pending publishers have distinct (owner, repo, workflow, environment)
-  # tuples — PyPI requires that uniqueness, which a monorepo otherwise violates.
+  # tuples. PyPI requires that uniqueness, which a monorepo otherwise violates.
   # The environment and index are chosen by the dispatch `target`: a tag push
   # defaults to pypi (envs pypi / pypi-widget); a manual run can target testpypi
   # (envs testpypi / testpypi-widget) for a dry run.
