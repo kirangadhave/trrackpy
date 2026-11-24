@@ -10,8 +10,9 @@ import traitlets
 
 from trrack import Node, ProvenanceGraph
 from trrack.persist import Store, graph_envelope, read_envelope
-from trrack_widget._base import TargetWidget, infer_traits
+from trrack_widget._base import TargetWidget
 from trrack_widget._persist import CoalescedWriter, Debouncer
+from trrack_widget._tracked import TrackedValues
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -93,12 +94,12 @@ class Trrackable(TargetWidget):
             saved = store.load()
         kind, value = read_envelope(saved) if saved is not None else (None, {})
         if kind == "graph":
-            self._tracked = list(value["tracked"])
+            self._values = TrackedValues(target, value["tracked"])
             self._tree = ProvenanceGraph.from_dict(value["tree"])
         else:
             # A state payload holds values only, so the tracked traits come
             # from the caller or from the target.
-            self._tracked = list(traits) if traits is not None else infer_traits(target)
+            self._values = TrackedValues(target, traits)
             self._set_values(value)
             self._tree = ProvenanceGraph(self.state, now=_now())
 
@@ -155,16 +156,20 @@ class Trrackable(TargetWidget):
         self.flush()
         super()._unfollow_target()
 
-    def _apply(self, node: Node) -> None:
+    def _navigate(self, move: Callable[[], Node | None]) -> None:
+        # A change that waits for the debounce belongs to the node that the
+        # history leaves, so it must not land on the node it goes to.
+        self._cancel_pending_commit()
+        node = move()
+        if node is None:
+            return
         self._sync_tree()
         self._set_values(node.state)
         self._schedule_persist()
 
     def _on_current_id_change(self, change: dict) -> None:
-        if self._internal:
-            return
-        self._cancel_pending_commit()
-        self._apply(self._tree.go_to(change["new"]))
+        if not self._internal:
+            self.go_to(change["new"])
 
     def _on_relabel(self, change: dict) -> None:
         request = change["new"]
@@ -178,17 +183,11 @@ class Trrackable(TargetWidget):
 
     def undo(self) -> None:
         """Go back one step, and set the target to that state."""
-        self._cancel_pending_commit()
-        node = self._tree.undo()
-        if node is not None:
-            self._apply(node)
+        self._navigate(self._tree.undo)
 
     def redo(self) -> None:
         """Go forward to the newest next step, and set the target to it."""
-        self._cancel_pending_commit()
-        node = self._tree.redo()
-        if node is not None:
-            self._apply(node)
+        self._navigate(self._tree.redo)
 
     def go_to(self, node_id: str) -> None:
         """Jump to a node, and set the target to its state.
@@ -196,8 +195,7 @@ class Trrackable(TargetWidget):
         Args:
             node_id (str): The id of the node to go to.
         """
-        self._cancel_pending_commit()
-        self._apply(self._tree.go_to(node_id))
+        self._navigate(lambda: self._tree.go_to(node_id))
 
     def label(self, text: str, node_id: str | None = None) -> None:
         """Rename a node.
@@ -214,7 +212,7 @@ class Trrackable(TargetWidget):
     def to_dict(self) -> dict:
         """Serialize the tracked trait names and the whole history."""
         return graph_envelope(
-            {"tracked": list(self._tracked), "tree": self._tree.to_dict()}
+            {"tracked": list(self._values.names), "tree": self._tree.to_dict()}
         )
 
     @classmethod

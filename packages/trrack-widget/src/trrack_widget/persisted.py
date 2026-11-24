@@ -7,8 +7,9 @@ import pathlib
 from typing import Any
 
 from trrack.persist import Store, from_state, read_envelope
-from trrack_widget._base import TargetWidget, infer_traits
+from trrack_widget._base import TargetWidget
 from trrack_widget._persist import CoalescedWriter
+from trrack_widget._tracked import TrackedValues
 
 _STATIC = pathlib.Path(__file__).parent / "static"
 
@@ -66,7 +67,7 @@ class Persisted(TargetWidget):
             raise ValueError(msg)
 
         super().__init__(target, **kwargs)
-        self._tracked = list(traits) if traits is not None else infer_traits(target)
+        self._values = TrackedValues(target, traits)
         self._writer = CoalescedWriter(
             store, lambda: from_state(self.state), self._on_save_result
         )

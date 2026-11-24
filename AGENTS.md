@@ -49,7 +49,9 @@ cd packages/trrack-widget && pnpm run lint && pnpm run typecheck && cd ../..  # 
 - `packages/trrack-widget/src/trrack_widget/persisted.py`: `Persisted`.
 - `packages/trrack-widget/src/trrack_widget/widget.py`: `Trrackable`.
 - `packages/trrack-widget/src/trrack_widget/_base.py`: what both wrappers
-  share: the `target` and `error` traits and the tracked values.
+  share: the `target` and `error` traits, and the link to the target.
+- `packages/trrack-widget/src/trrack_widget/_tracked.py`: `TrackedValues`,
+  which reads, sets, and observes the tracked traits of the target.
 - `packages/trrack-widget/src/trrack_widget/_persist.py`: `Debouncer` and
   `CoalescedWriter`, the batched store writes.
 - `packages/trrack-widget/js/compose.ts`: shows the wrapped widget and the

@@ -37,7 +37,7 @@ def test_recording_builds_tree_and_syncs_current():
 def test_tracked_traits_exclude_widget_internals():
     counter = Counter()
     tt = Trrackable(counter)
-    assert tt._tracked == ["count"]
+    assert tt.to_dict()["value"]["tracked"] == ["count"]
 
 
 def test_frontend_navigation_applies_snapshot_to_target():

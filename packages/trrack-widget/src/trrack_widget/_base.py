@@ -1,4 +1,4 @@
-"""What Persisted and Trrackable share: a target widget and its tracked traits."""
+"""What Persisted and Trrackable share: a target widget and its tracked values."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import anywidget
 import traitlets
+
+from trrack_widget._tracked import TrackedValues
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -22,24 +24,6 @@ _active: weakref.WeakKeyDictionary[Any, dict[str, weakref.ref[TargetWidget]]] = 
 )
 
 
-def infer_traits(target: Any) -> list[str]:
-    """List the traits that hold a widget's own state.
-
-    Args:
-        target (Any): The widget to inspect.
-
-    Returns:
-        list[str]: The synced traits of ``target``, leaving out private traits
-        and the ones every anywidget has.
-    """
-    base = set(anywidget.AnyWidget.class_traits(sync=True))
-    return [
-        name
-        for name in target.traits(sync=True)
-        if name not in base and not name.startswith("_")
-    ]
-
-
 class TargetWidget(anywidget.AnyWidget):
     """A widget that shows another widget and follows some of its traits."""
 
@@ -48,7 +32,7 @@ class TargetWidget(anywidget.AnyWidget):
 
     def __init__(self, target: Any, **kwargs: Any) -> None:
         super().__init__(target=target, **kwargs)
-        self._tracked: list[str] = []
+        self._values = TrackedValues(target, [])
         self._writer: CoalescedWriter | None = None
         # Set while this object changes the target or itself, so its own
         # observers can tell those changes from the user's.
@@ -65,20 +49,11 @@ class TargetWidget(anywidget.AnyWidget):
     @property
     def state(self) -> dict:
         """The current values of the tracked traits, keyed by trait name."""
-        return {name: getattr(self.target, name) for name in self._tracked}
+        return self._values.read()
 
     def _set_values(self, values: dict) -> None:
-        rejected = []
         with self._guard():
-            for name in self._tracked:
-                if name not in values:
-                    continue
-                # A saved value can stop fitting its trait, for example after
-                # a hand edit. The widget keeps its current value for it.
-                try:
-                    setattr(self.target, name, values[name])
-                except traitlets.TraitError as error:
-                    rejected.append(str(error))
+            rejected = self._values.write(values)
         if rejected:
             self.error = "Ignored a saved value. " + " ".join(rejected)
 
@@ -98,13 +73,13 @@ class TargetWidget(anywidget.AnyWidget):
         if previous is not None:
             previous._unfollow_target()  # noqa: SLF001
         wrappers[kind] = weakref.ref(self)
-        self.target.observe(self._on_target_change, names=self._tracked)
+        self._values.observe(self._on_target_change)
 
     def _unfollow_target(self) -> None:
         # A wrapper that failed in its constructor has no target.
         if self.target is None:
             return
-        self.target.unobserve(self._on_target_change, names=self._tracked)
+        self._values.unobserve(self._on_target_change)
         if self._writer is not None:
             self._writer.flush_if_pending()
 
