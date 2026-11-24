@@ -2961,12 +2961,12 @@ wheels = [
 
 [[package]]
 name = "trrack"
-version = "0.0.1a2"
+version = "0.1.0"
 source = { editable = "packages/trrack" }
 
 [[package]]
 name = "trrack-widget"
-version = "0.0.1a2"
+version = "0.1.0"
 source = { editable = "packages/trrack-widget" }
 dependencies = [
     { name = "anywidget" },
