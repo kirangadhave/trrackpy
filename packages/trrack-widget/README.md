@@ -2,8 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/trrack-widget?label=PyPI)](https://pypi.org/project/trrack-widget/)
 
-Save and track the state of [anywidget](https://anywidget.dev) widgets in
-[marimo](https://marimo.io) and Jupyter.
+Track the state of [anywidget](https://anywidget.dev) widgets.
 
 - `Persisted` saves a widget's state and restores it the next time it loads.
 - `Trrackable` records every change as a history you can undo, redo, and

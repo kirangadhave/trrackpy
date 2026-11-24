@@ -1,5 +1,5 @@
 site_name: trrackpy
-site_description: Save and track the state of widgets in marimo and Jupyter.
+site_description: Track the state of anywidget widgets.
 site_url: https://kirangadhave.github.io/trrackpy/
 repo_url: https://github.com/kirangadhave/trrackpy
 repo_name: kirangadhave/trrackpy

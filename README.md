@@ -4,7 +4,7 @@
 [![PyPI - trrack](https://img.shields.io/pypi/v/trrack?label=trrack)](https://pypi.org/project/trrack/)
 [![PyPI - trrack-widget](https://img.shields.io/pypi/v/trrack-widget?label=trrack-widget)](https://pypi.org/project/trrack-widget/)
 
-Save and track the state of widgets in [marimo](https://marimo.io) and Jupyter.
+Track the state of [anywidget](https://anywidget.dev) widgets.
 
 ```python
 from trrack_widget import JsonFileStore, Persisted, Trrackable
