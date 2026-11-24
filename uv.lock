@@ -13,6 +13,7 @@ members = [
     "trrack",
     "trrack-widget",
 ]
+overrides = [{ name = "sqlglot" }]
 
 [manifest.dependency-groups]
 dev = [
@@ -1288,7 +1289,7 @@ recommended = [
     { name = "pydantic-ai-slim", version = "2.67.0", source = { registry = "https://pypi.org/simple" }, extra = ["openai"], marker = "python_full_version >= '3.15'" },
     { name = "pydantic-ai-slim", version = "2.71.0", source = { registry = "https://pypi.org/simple" }, extra = ["openai"], marker = "python_full_version >= '3.11' and python_full_version < '3.15'" },
     { name = "ruff" },
-    { name = "sqlglot", extra = ["c"] },
+    { name = "sqlglot" },
     { name = "uv" },
 ]
 
@@ -2797,17 +2798,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/c4/56/56d234bb267009a4b
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1f/08/bdc2fbd41b61173dade9ebb96b56e072a1cd7bdac24d8195e6dc5005186e/sqlglot-30.7.0-py3-none-any.whl", hash = "sha256:30421efcf3d57f95e57deaa755f65976c8b10735923f79986595dea912dc8206", size = 683613, upload-time = "2026-05-04T17:02:21.623Z" },
 ]
-
-[package.optional-dependencies]
-c = [
-    { name = "sqlglotc" },
-]
-
-[[package]]
-name = "sqlglotc"
-version = "30.7.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/78/b2/65a8763e7ed65028c7b905108cf8333f1ddf84a138bd6ec553f04af51c07/sqlglotc-30.7.0.tar.gz", hash = "sha256:451bc8851f5a44474341f8ad2eded57d7f2d7a466063658a1c979bcd04755a7f", size = 473396, upload-time = "2026-05-04T17:01:29.229Z" }
 
 [[package]]
 name = "stack-data"

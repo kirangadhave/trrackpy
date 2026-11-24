@@ -1,6 +1,11 @@
 [tool.uv.workspace]
 members = ["packages/*"]
 
+[tool.uv]
+# marimo[recommended] asks for sqlglot[c], whose compiled part ships as source
+# only and fails to build on Linux. Plain sqlglot is pure Python.
+override-dependencies = ["sqlglot"]
+
 [tool.uv.sources]
 trrack = { workspace = true }
 
