@@ -43,7 +43,7 @@ export function showTargetAndStatus(
 
   let renderError = ""
   const draw = () => {
-    const text = renderError || ctx.model.get("error") as string
+    const text = renderError || (ctx.model.get("error") as string)
     status.textContent = text
     status.hidden = !text
   }

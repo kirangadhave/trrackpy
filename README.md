@@ -6,6 +6,8 @@
 
 Track the state of [anywidget](https://anywidget.dev) widgets.
 
+Read the documentation at [kirangadhave.me/trrackpy](https://kirangadhave.me/trrackpy/).
+
 ```python
 from trrack_widget import JsonFileStore, Persisted, Trrackable
 

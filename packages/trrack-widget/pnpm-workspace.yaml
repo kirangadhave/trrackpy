@@ -1,2 +1,6 @@
 allowBuilds:
   esbuild: true
+
+# Install a version only after it is 7 days old (the value is in minutes), so
+# a compromised release has time to be found and removed first.
+minimumReleaseAge: 10080

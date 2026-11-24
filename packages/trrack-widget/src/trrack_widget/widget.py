@@ -10,8 +10,9 @@ import traitlets
 
 from trrack import Node, ProvenanceGraph
 from trrack.persist import Store, graph_envelope, read_envelope
-from trrack_widget._base import TargetWidget, infer_traits
+from trrack_widget._base import TargetWidget
 from trrack_widget._persist import CoalescedWriter, Debouncer
+from trrack_widget._tracked import TrackedValues
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -30,6 +31,9 @@ class Trrackable(TargetWidget):
     changes. Displaying a ``Trrackable`` shows the target with the history
     controls next to it. If a save fails, the error appears under them.
 
+    The controls are a row of buttons and the history graph. Set ``buttons``
+    and ``graph`` to show or hide them.
+
     Examples:
         ```python
         from trrack_widget import Trrackable
@@ -38,10 +42,17 @@ class Trrackable(TargetWidget):
         tracked  # displays the counter and its history
         tracked.undo()
         ```
+
+        ```python
+        tracked = Trrackable(counter, graph=False)  # buttons only
+        tracked.graph = True  # show the graph
+        ```
     """
 
     nodes = traitlets.Dict().tag(sync=True)
     current_id = traitlets.Unicode().tag(sync=True)
+    buttons = traitlets.Bool(default_value=True).tag(sync=True)
+    graph = traitlets.Bool(default_value=True).tag(sync=True)
     _relabel = traitlets.Dict(allow_none=True).tag(sync=True)
 
     _esm = _STATIC / "controls.js"
@@ -55,6 +66,8 @@ class Trrackable(TargetWidget):
         store: Store | None = None,
         restore: dict | None = None,
         label_formatter: Callable[[dict, dict], str] | None = None,
+        buttons: bool = True,
+        graph: bool = True,
         **kwargs: Any,
     ) -> None:
         """Wrap ``target`` and record its tracked traits.
@@ -75,9 +88,14 @@ class Trrackable(TargetWidget):
             label_formatter (Callable[[dict, dict], str], optional): Builds a
                 node's label from the old and new tracked values. Defaults to
                 a list of what changed, such as ``count: 1 → 2``.
+            buttons (bool, optional): Show the row of buttons. Defaults to
+                ``True``.
+            graph (bool, optional): Show the history graph. Defaults to
+                ``True``. The History button in the row also shows and hides
+                it.
             **kwargs (Any): Forwarded to ``anywidget.AnyWidget``.
         """
-        super().__init__(target, **kwargs)
+        super().__init__(target, buttons=buttons, graph=graph, **kwargs)
         self._label_formatter = label_formatter
         self._commit_debouncer = (
             Debouncer(debounce_ms, self._commit) if debounce_ms > 0 else None
@@ -93,12 +111,12 @@ class Trrackable(TargetWidget):
             saved = store.load()
         kind, value = read_envelope(saved) if saved is not None else (None, {})
         if kind == "graph":
-            self._tracked = list(value["tracked"])
+            self._values = TrackedValues(target, value["tracked"])
             self._tree = ProvenanceGraph.from_dict(value["tree"])
         else:
             # A state payload holds values only, so the tracked traits come
             # from the caller or from the target.
-            self._tracked = list(traits) if traits is not None else infer_traits(target)
+            self._values = TrackedValues(target, traits)
             self._set_values(value)
             self._tree = ProvenanceGraph(self.state, now=_now())
 
@@ -155,16 +173,20 @@ class Trrackable(TargetWidget):
         self.flush()
         super()._unfollow_target()
 
-    def _apply(self, node: Node) -> None:
+    def _navigate(self, move: Callable[[], Node | None]) -> None:
+        # A change that waits for the debounce belongs to the node that the
+        # history leaves, so it must not land on the node it goes to.
+        self._cancel_pending_commit()
+        node = move()
+        if node is None:
+            return
         self._sync_tree()
         self._set_values(node.state)
         self._schedule_persist()
 
     def _on_current_id_change(self, change: dict) -> None:
-        if self._internal:
-            return
-        self._cancel_pending_commit()
-        self._apply(self._tree.go_to(change["new"]))
+        if not self._internal:
+            self.go_to(change["new"])
 
     def _on_relabel(self, change: dict) -> None:
         request = change["new"]
@@ -178,17 +200,11 @@ class Trrackable(TargetWidget):
 
     def undo(self) -> None:
         """Go back one step, and set the target to that state."""
-        self._cancel_pending_commit()
-        node = self._tree.undo()
-        if node is not None:
-            self._apply(node)
+        self._navigate(self._tree.undo)
 
     def redo(self) -> None:
         """Go forward to the newest next step, and set the target to it."""
-        self._cancel_pending_commit()
-        node = self._tree.redo()
-        if node is not None:
-            self._apply(node)
+        self._navigate(self._tree.redo)
 
     def go_to(self, node_id: str) -> None:
         """Jump to a node, and set the target to its state.
@@ -196,8 +212,7 @@ class Trrackable(TargetWidget):
         Args:
             node_id (str): The id of the node to go to.
         """
-        self._cancel_pending_commit()
-        self._apply(self._tree.go_to(node_id))
+        self._navigate(lambda: self._tree.go_to(node_id))
 
     def label(self, text: str, node_id: str | None = None) -> None:
         """Rename a node.
@@ -214,17 +229,19 @@ class Trrackable(TargetWidget):
     def to_dict(self) -> dict:
         """Serialize the tracked trait names and the whole history."""
         return graph_envelope(
-            {"tracked": list(self._tracked), "tree": self._tree.to_dict()}
+            {"tracked": list(self._values.names), "tree": self._tree.to_dict()}
         )
 
     @classmethod
-    def from_dict(
+    def from_dict(  # noqa: PLR0913 — the same optional config as the constructor
         cls,
         data: dict,
         target: Any,
         *,
         debounce_ms: int = 0,
         label_formatter: Callable[[dict, dict], str] | None = None,
+        buttons: bool = True,
+        graph: bool = True,
     ) -> Trrackable:
         """Rebuild a ``Trrackable`` from ``to_dict()`` output.
 
@@ -234,6 +251,8 @@ class Trrackable(TargetWidget):
             debounce_ms (int, optional): See ``Trrackable``.
             label_formatter (Callable[[dict, dict], str], optional): See
                 ``Trrackable``.
+            buttons (bool, optional): See ``Trrackable``.
+            graph (bool, optional): See ``Trrackable``.
 
         Returns:
             Trrackable: A widget that tracks ``target`` with the saved history.
@@ -243,4 +262,6 @@ class Trrackable(TargetWidget):
             debounce_ms=debounce_ms,
             label_formatter=label_formatter,
             restore=data,
+            buttons=buttons,
+            graph=graph,
         )
