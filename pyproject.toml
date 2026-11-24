@@ -2,6 +2,9 @@
 members = ["packages/*"]
 
 [tool.uv]
+# Install a version only after it is 7 days old, so a compromised release has
+# time to be found and removed first.
+exclude-newer = "7 days"
 # marimo[recommended] asks for sqlglot[c], whose compiled part ships as source
 # only and fails to build on Linux. Plain sqlglot is pure Python.
 override-dependencies = ["sqlglot"]
@@ -27,6 +30,9 @@ docs = [
 line-length = 88
 target-version = "py310"
 src = ["packages/trrack/src", "packages/trrack-widget/src"]
+# The code blocks in the docs align their trailing comments by hand, and the
+# formatter removes that alignment.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -37,6 +43,7 @@ ignore = [
     "ISC001",  # implicit string concat (formatter handles this)
     "FBT001", "FBT002",  # boolean positional args — acceptable in this API
     "ANN401",  # allow typing.Any where the snapshot dicts need it
+    "CPY001",  # no copyright header per file; the LICENSE file covers the repo
 ]
 
 [tool.ruff.lint.pydocstyle]

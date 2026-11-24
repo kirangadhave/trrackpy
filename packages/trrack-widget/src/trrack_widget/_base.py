@@ -10,7 +10,7 @@ import anywidget
 import traitlets
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator
 
     from trrack_widget._persist import CoalescedWriter
 
@@ -55,7 +55,7 @@ class TargetWidget(anywidget.AnyWidget):
         self._internal = False
 
     @contextlib.contextmanager
-    def _guard(self) -> Iterator[None]:
+    def _guard(self) -> Generator[None]:
         self._internal = True
         try:
             yield
