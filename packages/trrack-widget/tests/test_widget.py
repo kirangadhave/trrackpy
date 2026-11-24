@@ -6,7 +6,9 @@ import time
 import anywidget
 import pytest
 import traitlets
+from helpers import FlakyStore, RecordingStore
 
+from trrack import JsonFileStore
 from trrack_widget import Trrackable
 
 
@@ -137,11 +139,12 @@ def test_to_dict_from_dict_restores_tree_and_target():
     assert counter.count == 1
 
     payload = tt.to_dict()
-    assert payload["tracked"] == ["count"]
+    assert payload["type"] == "graph"
+    assert payload["value"]["tracked"] == ["count"]
 
     fresh = Counter()
     restored = Trrackable.from_dict(payload, fresh)
-    assert restored.to_dict()["tree"] == payload["tree"]
+    assert restored.to_dict()["value"]["tree"] == payload["value"]["tree"]
     assert fresh.count == 1  # current node's state applied to the new target
 
     # Recording still works on the restored widget.
@@ -149,132 +152,200 @@ def test_to_dict_from_dict_restores_tree_and_target():
     assert restored.nodes[restored.current_id]["state"] == {"count": 5}
 
 
-def test_persist_path_restores_on_init(tmp_path):
+def test_file_store_restores_on_init(tmp_path):
     path = tmp_path / "state.json"
 
     first = Counter()
-    tt1 = Trrackable(first, persist_path=path)
+    tt1 = Trrackable(first, store=JsonFileStore(path))
     first.count = 7
-    tt1.flush_persist()
+    tt1.save()
 
     second = Counter()
-    tt2 = Trrackable(second, persist_path=path)
+    tt2 = Trrackable(second, store=JsonFileStore(path))
     # File is authoritative: the fresh target adopts the saved current state.
     assert second.count == 7
     assert len(tt2.nodes) == 2
 
 
-def test_store_argument_overrides_persist_path(tmp_path):
-    from trrack import JsonFileStore
-
+def test_store_receives_graph_payload(tmp_path):
     store = JsonFileStore(tmp_path / "via_store.json")
     counter = Counter()
     tt = Trrackable(counter, store=store)
     counter.count = 3
-    tt.flush_persist()
+    tt.save()
     payload = store.load()
     assert payload is not None
-    assert payload["tree"]["nodes"]  # the store received the payload
+    assert payload["type"] == "graph"
+    assert payload["value"]["tree"]["nodes"]  # the store received the payload
 
 
-def test_persist_path_writes_on_each_mutation(tmp_path):
+def test_file_store_writes_on_each_mutation(tmp_path):
     path = tmp_path / "state.json"
     counter = Counter()
-    tt = Trrackable(counter, persist_path=path)
+    tt = Trrackable(counter, store=JsonFileStore(path))
 
     counter.count = 1
     counter.count = 2
-    tt.flush_persist()
+    tt.save()
     after_commits = json.loads(path.read_text(encoding="utf-8"))
-    assert after_commits["tracked"] == ["count"]
-    assert len(after_commits["tree"]["nodes"]) == 3
+    assert after_commits["type"] == "graph"
+    assert after_commits["value"]["tracked"] == ["count"]
+    assert len(after_commits["value"]["tree"]["nodes"]) == 3
 
     # Navigation is a mutation too: it moves current_id and must be saved.
     tt.undo()
-    tt.flush_persist()
+    tt.save()
     after_undo = json.loads(path.read_text(encoding="utf-8"))
-    assert after_undo["tree"]["current_id"] != after_commits["tree"]["current_id"]
+    assert after_undo["type"] == "graph"
+    assert (
+        after_undo["value"]["tree"]["current_id"]
+        != after_commits["value"]["tree"]["current_id"]
+    )
+
+
+def test_store_payload_without_type_keeps_history():
+    first = Counter()
+    tt1 = Trrackable(first)
+    first.count = 1
+    first.count = 2
+    tt1.undo()
+    bare_graph = tt1.to_dict()["value"]
+    assert "type" not in bare_graph
+
+    second = Counter()
+    tt2 = Trrackable(second, store=RecordingStore(bare_graph))
+    assert second.count == 1
+    assert len(tt2.nodes) == 3
+    assert tt2.to_dict()["value"]["tree"] == bare_graph["tree"]
+
+
+def test_restore_accepts_payload_without_type():
+    first = Counter()
+    tt1 = Trrackable(first)
+    first.count = 1
+    bare_graph = tt1.to_dict()["value"]
+
+    second = Counter()
+    restored = Trrackable.from_dict(bare_graph, second)
+    assert second.count == 1
+    assert len(restored.nodes) == 2
+
+
+def test_state_envelope_becomes_root_of_new_graph():
+    store = RecordingStore({"type": "state", "value": {"count": 4}})
+    counter = Counter()
+    tt = Trrackable(counter, store=store)
+
+    assert counter.count == 4
+    assert len(tt.nodes) == 1
+    assert tt.nodes[tt.current_id]["state"] == {"count": 4}
+    assert tt.nodes[tt.current_id]["parent"] is None
+
+    counter.count = 5
+    tt.save()
+    assert store.data is not None
+    assert store.data["type"] == "graph"
+    assert len(store.data["value"]["tree"]["nodes"]) == 2
+
+
+def test_state_envelope_leaves_store_unchanged_until_a_change():
+    saved = {"type": "state", "value": {"count": 4}}
+    store = RecordingStore(saved)
+    Trrackable(Counter(), store=store)
+    assert store.data == saved
+
+
+def test_state_envelope_ignores_untracked_keys():
+    store = RecordingStore({"type": "state", "value": {"count": 4, "other": 1}})
+    counter = Counter()
+    tt = Trrackable(counter, store=store)
+
+    assert counter.count == 4
+    assert not hasattr(counter, "other")
+    assert tt.nodes[tt.current_id]["state"] == {"count": 4}
 
 
 def test_no_persist_without_store(tmp_path):
     counter = Counter()
     tt = Trrackable(counter)
     counter.count = 1
-    tt.flush_persist()
+    tt.save()
     assert list(tmp_path.iterdir()) == []
 
 
-def test_bare_widget_displays_as_view():
-    pytest.importorskip("marimo")
+def test_target_is_synced_as_a_widget_reference():
     counter = Counter()
     tt = Trrackable(counter)
-
-    # The display hook renders the same composite as .view (a marimo hstack).
-    assert type(tt._display_()) is type(tt.view)
-    # .widget and .controls remain individual viewers.
-    assert tt.widget is counter
-    assert tt.controls is not tt
+    assert tt.target is counter
+    assert tt.get_state()["target"] == f"anywidget:{counter.model_id}"
 
 
-def test_controls_viewer_is_stable_and_recursion_free():
+def test_target_must_be_a_widget():
+    with pytest.raises(traitlets.TraitError, match="target"):
+        Trrackable(traitlets.HasTraits())
+
+
+def test_marimo_formats_bare_trrackable_as_one_widget():
     pytest.importorskip("marimo")
     from marimo._output.formatting import try_format
 
+    tt = Trrackable(Counter())
+    assert try_format(tt).data.count("<marimo-anywidget") == 1
+
+
+def test_failed_background_save_shows_an_error_then_clears():
+    store = FlakyStore()
+    counter = Counter()
+    tt = Trrackable(counter, store=store)
+    assert tt.error == ""
+
+    store.broken = True
+    counter.count = 1
+    time.sleep(0.15)
+    assert tt.error == "Could not save: disk is full"
+
+    store.broken = False
+    counter.count = 2
+    time.sleep(0.15)
+    assert tt.error == ""
+
+
+def test_bad_saved_state_value_is_skipped_and_reported():
+    store = RecordingStore({"type": "state", "value": {"count": "abc"}})
+    counter = Counter()
+
+    tt = Trrackable(counter, store=store)
+
+    assert counter.count == 0
+    assert "count" in tt.error
+
+
+def test_broken_store_does_not_block_construction():
+    store = FlakyStore()
+    store.broken = True
+
+    tt = Trrackable(Counter(), store=store)
+
+    assert len(tt.nodes) == 1
+    assert tt.error == "Could not save: disk is full"
+
+
+def test_new_trrackable_replaces_the_old_one_on_the_same_widget():
+    counter = Counter()
+    first = Trrackable(counter)
+    second = Trrackable(counter)
+
+    counter.count = 1
+
+    assert len(first.nodes) == 1
+    assert len(second.nodes) == 2
+
+
+def test_close_stops_recording():
     counter = Counter()
     tt = Trrackable(counter)
 
-    # The controls viewer is cached and is not the Trrackable itself, so it
-    # carries no _display_ hook — embedding it in the view cannot recurse.
-    assert tt.controls is tt.controls
-    assert tt.controls is not tt
+    tt.close()
+    counter.count = 1
 
-    # Formatting a bare Trrackable resolves _display_ -> view -> controls
-    # without re-entering _display_ (a recursion bug would raise here).
-    formatted = try_format(tt)
-    assert formatted.data
-
-
-def test_jupyter_mimebundle_renders_composite(monkeypatch):
-    ipywidgets = pytest.importorskip("ipywidgets")
-    # Force the non-marimo (Jupyter) display path.
-    import trrack_widget.widget as widget_mod
-
-    monkeypatch.setattr(widget_mod, "_in_marimo", lambda: False)
-
-    captured = {}
-    real_hbox = ipywidgets.HBox
-
-    def spy_hbox(children, *args, **kwargs):
-        captured["children"] = children
-        return real_hbox(children, *args, **kwargs)
-
-    monkeypatch.setattr(ipywidgets, "HBox", spy_hbox)
-
-    counter = Counter()
-    tt = Trrackable(counter)
-
-    # Bare display builds an HBox of the target and the controls, and returns
-    # without recursing back into this hook (a recursion bug would raise).
-    # ty resolves the overridden method over a union with the inherited
-    # ipywidgets one and wrongly reports `self` unbound; the call is valid.
-    bundle = tt._repr_mimebundle_()  # ty: ignore[missing-argument]
-    assert bundle is not None
-    assert captured["children"] == [counter, tt]
-
-
-def test_view_is_a_flex_row_that_expands_the_widget():
-    pytest.importorskip("marimo")
-    counter = Counter()
-    tt = Trrackable(counter)
-    html = tt.view.text
-    assert "display: flex" in html
-    assert "flex: 1" in html  # widget grows to fill remaining space
-
-
-def test_view_keeps_controls_live():
-    # The controls must be embedded as a live marimo element (so its JS runs),
-    # not a static HTML snapshot.
-    pytest.importorskip("marimo")
-    counter = Counter()
-    tt = Trrackable(counter)
-    assert "marimo-anywidget" in tt.view.text
+    assert len(tt.nodes) == 1

@@ -4,12 +4,6 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING
-
-from .persist import read_json, write_json_atomic
-
-if TYPE_CHECKING:
-    import os
 
 
 @dataclass
@@ -142,18 +136,6 @@ class ProvenanceGraph:
         tree.root_id = data["root_id"]
         tree.current_id = data["current_id"]
         return tree
-
-    def save(self, path: str | os.PathLike[str]) -> None:
-        """Write the serialized graph to ``path`` atomically."""
-        write_json_atomic(path, self.to_dict())
-
-    @classmethod
-    def load(cls, path: str | os.PathLike[str]) -> ProvenanceGraph | None:
-        """Load a graph from ``path``, or return ``None`` if it is absent."""
-        data = read_json(path)
-        if data is None:
-            return None
-        return cls.from_dict(data)
 
     @staticmethod
     def _auto_label(old: dict, new: dict) -> str:

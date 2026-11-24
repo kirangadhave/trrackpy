@@ -4,16 +4,16 @@ Guidance for coding agents working in trrackpy.
 
 ## Orientation
 
-trrackpy tracks the history of state as a branching provenance graph and lets
-you navigate it (undo, redo, jump to any node, branch off an earlier state). It
-is a [uv](https://docs.astral.sh/uv/) workspace of two packages:
+trrackpy saves and tracks the state of notebook widgets. It is a
+[uv](https://docs.astral.sh/uv/) workspace of two packages:
 
-- `packages/trrack` — the **core** model. Pure Python, no UI dependencies.
-- `packages/trrack-widget` — an [anywidget](https://anywidget.dev) (`Trrackable`)
-  that wraps any widget with time-travel controls. Consumes `trrack` from the
-  local workspace source.
+- `packages/trrack`: the core. A branching history model and the stores. Pure
+  Python, no UI dependencies.
+- `packages/trrack-widget`: two [anywidget](https://anywidget.dev) wrappers.
+  `Persisted` saves a widget's state. `Trrackable` records its history with
+  undo and redo. Uses `trrack` from the local workspace source.
 
-The core is pure; the widget consumes it locally.
+`examples` has runnable marimo notebooks for both wrappers.
 
 ## Build / test commands
 
@@ -26,32 +26,45 @@ uv run ty check                                                           # type
 cd packages/trrack-widget && pnpm run lint && pnpm run typecheck && cd ../..  # JS gate
 ```
 
-## Invariants — do not break
+## Invariants: do not break
 
 - `trrack` stays free of UI dependencies. Nothing in `packages/trrack` imports
-  anywidget, traitlets, marimo, or React.
-- `ProvenanceGraph` stays deterministic and I/O-free: timestamps are injected by
-  the caller via `now`, never read from the clock inside the model.
-- Persistence goes through the `trrack.Store` protocol. Add backends by
-  implementing `save`/`load`; do not introduce a registry or plugin system.
-- The node model stores **full state snapshots** per node. Diff-based nodes are a
-  documented future option (see `packages/trrack/src/trrack/persist.py`), not a
-  change to make casually.
+  anywidget, traitlets, or marimo.
+- `ProvenanceGraph` stays deterministic and I/O-free. The caller passes each
+  timestamp as `now`. The model never reads the clock and never touches files.
+- Saving goes through the `trrack.Store` protocol: `save` and `load`. Add a
+  store by writing those two methods. Do not add a registry or plugin system.
+- Saved payloads are tagged `{"type": "graph" | "state", "value": ...}`. A
+  payload with no `type` is a graph.
+- Each node stores a full snapshot of the state. Do not change this to diffs
+  without a decision from the maintainer.
+- The wrapped widget must be an anywidget. Both wrappers show it through
+  anywidget composition (`host.getWidget`), not through host layout code.
 
 ## Code-nav pointers
 
-- `packages/trrack/src/trrack/graph.py` — `ProvenanceGraph` and `Node` (the model).
-- `packages/trrack/src/trrack/persist.py` — `Store` protocol, `JsonFileStore`,
-  atomic JSON helpers.
-- `packages/trrack-widget/src/trrack_widget/widget.py` — the `Trrackable` adapter.
-- `packages/trrack-widget/js/controls.tsx` — the React controls UI.
+- `packages/trrack/src/trrack/graph.py`: `ProvenanceGraph` and `Node`.
+- `packages/trrack/src/trrack/persist.py`: the `Store` protocol,
+  `JsonFileStore`, `to_state`, `from_state`, and the payload tags.
+- `packages/trrack-widget/src/trrack_widget/persisted.py`: `Persisted`.
+- `packages/trrack-widget/src/trrack_widget/widget.py`: `Trrackable`.
+- `packages/trrack-widget/src/trrack_widget/_base.py`: what both wrappers
+  share: the `target` and `error` traits and the tracked values.
+- `packages/trrack-widget/src/trrack_widget/_persist.py`: `Debouncer` and
+  `CoalescedWriter`, the batched store writes.
+- `packages/trrack-widget/js/compose.ts`: shows the wrapped widget and the
+  error line. `controls.tsx` (history controls, Preact) and `persisted.ts`
+  both use it.
+- `examples`: marimo notebooks, in `persisted` and `trrackable`.
+- `docs/pages` and `mkdocs.yml`: the docs site, built with Zensical. The API
+  reference pages come from the docstrings, so a public docstring is public
+  documentation. `docs/agents` is not part of the site.
 
 ## Conventions
 
 - ruff, `ty`, and oxlint must stay green.
 - [Conventional commits](https://www.conventionalcommits.org/).
-- Do not commit the `src/trrack_widget/static/` bundle — it is a gitignored
-  build artifact.
+- Do not commit `src/trrack_widget/static/`. It is gitignored build output.
 
 ## Agent skills
 

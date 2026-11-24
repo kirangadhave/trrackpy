@@ -1,14 +1,25 @@
-"""anywidget time-travel controls powered by trrack.
+"""Save and track the state of anywidget widgets.
 
-Wrap any widget with :class:`Trrackable` to record, branch, and navigate its
-state, with optional persistence.
+``Persisted`` saves a widget's state and restores it. ``Trrackable`` records
+every change as a history with undo and redo. The store names from ``trrack``
+are here too, so one import covers the common case.
 """
 
 from __future__ import annotations
 
 from importlib.metadata import version
 
+from trrack import JsonFileStore, Store, from_state, to_state
+
+from .persisted import Persisted
 from .widget import Trrackable
 
-__all__ = ["Trrackable"]
+__all__ = [
+    "JsonFileStore",
+    "Persisted",
+    "Store",
+    "Trrackable",
+    "from_state",
+    "to_state",
+]
 __version__ = version("trrack-widget")

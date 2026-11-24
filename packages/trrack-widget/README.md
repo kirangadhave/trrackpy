@@ -2,14 +2,12 @@
 
 [![PyPI](https://img.shields.io/pypi/v/trrack-widget?label=PyPI)](https://pypi.org/project/trrack-widget/)
 
-An [anywidget](https://anywidget.dev) that wraps any widget and records its
-state as a branching provenance history you can navigate — undo, redo, jump to
-any node, branch off an earlier state, and label checkpoints. Works in
+Save and track the state of [anywidget](https://anywidget.dev) widgets in
 [marimo](https://marimo.io) and Jupyter.
 
-Built on [`trrack`](https://pypi.org/project/trrack/) (the pure provenance
-core); part of the [trrackpy](https://github.com/kirangadhave/trrackpy)
-monorepo.
+- `Persisted` saves a widget's state and restores it the next time it loads.
+- `Trrackable` records every change as a history you can undo, redo, and
+  branch.
 
 ## Install
 
@@ -17,78 +15,29 @@ monorepo.
 uv add trrack-widget          # or: pip install trrack-widget
 ```
 
-`trrack` is pulled in automatically.
-
-## Quick start
-
-Wrap any anywidget; its synced traits are tracked, and every change is committed
-as a node in the history.
+## Use
 
 ```python
-from trrack_widget import Trrackable
+from trrack_widget import JsonFileStore, Persisted, Trrackable
 
-tt = Trrackable(counter)   # counter is any anywidget.AnyWidget
-tt.view                    # wrapped widget + provenance controls, side by side
+Persisted(counter, store=JsonFileStore("state.json"))   # comes back as you left it
+Trrackable(counter)                                      # undo, redo, and branch
 ```
 
-Drive it from Python as well as the UI:
+The store decides where the state lives. `JsonFileStore` uses a file. Write
+your own with two methods, `save` and `load`, to use a database or the URL.
 
-```python
-tt.undo()
-tt.redo()
-tt.go_to(node_id)          # jump to any node
-tt.label("before tuning")  # name the current node
-```
+## Docs
 
-## Display
+The guide, the examples, and the API reference are at
+[kirangadhave.github.io/trrackpy](https://kirangadhave.github.io/trrackpy/).
 
-- `tt.view` — the target and the controls side by side. Uses `marimo.hstack`
-  when marimo is available, otherwise falls back to `ipywidgets.HBox`.
-- `tt.widget` — just the wrapped target.
-- `tt.controls` — just the provenance control UI.
+## Requirements
 
-## Constructor options
-
-```python
-Trrackable(
-    target,                 # the widget to track
-    traits=None,            # trait names to track; defaults to the target's
-                            # public synced traits
-    *,
-    debounce_ms=0,          # coalesce rapid trait changes into one commit
-    persist_path=None,      # convenience: persist to this JSON file
-    store=None,             # any trrack.Store; takes precedence over persist_path
-)
-```
-
-## Persistence
-
-Pass `persist_path` to make a session durable. State is restored on the next
-construction with the same path (the file is authoritative), and written after
-every mutation, coalesced and atomic:
-
-```python
-tt = Trrackable(counter, persist_path="state.json")
-# ... interact ...
-tt.flush_persist()         # force any pending write immediately
-```
-
-For a non-file backend, pass any `trrack.Store`:
-
-```python
-from trrack import JsonFileStore
-
-tt = Trrackable(counter, store=JsonFileStore("state.json"))
-```
-
-## Frontend
-
-The control UI is a React + TypeScript component bundled to
-`src/trrack_widget/static/controls.js`. Installed wheels ship the prebuilt
-bundle, so end users never need Node. See the
-[monorepo CONTRIBUTING guide](https://github.com/kirangadhave/trrackpy/blob/main/CONTRIBUTING.md)
-for the frontend dev loop.
+- The wrapped widget must be an anywidget.
+- marimo 0.23.14 or later, or Jupyter with anywidget 0.11 or later.
 
 ## License
 
-BSD-3-Clause.
+BSD-3-Clause. Part of the
+[trrackpy](https://github.com/kirangadhave/trrackpy) monorepo.

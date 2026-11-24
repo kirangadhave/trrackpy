@@ -37,3 +37,9 @@ __marimo__/
 
 # Agent working dir
 .context/
+
+# Data that the example notebooks save
+examples/*/data/
+
+# Built docs site
+/site/

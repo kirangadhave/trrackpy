@@ -1,0 +1,44 @@
+site_name: trrackpy
+site_description: Save and track the state of widgets in marimo and Jupyter.
+site_url: https://kirangadhave.github.io/trrackpy/
+repo_url: https://github.com/kirangadhave/trrackpy
+repo_name: kirangadhave/trrackpy
+
+# The docs folder also holds notes for coding agents, which are not site pages.
+docs_dir: docs/pages
+site_dir: site
+
+nav:
+  - Home: index.md
+  - Install: install.md
+  - Persisted: persisted.md
+  - Trrackable: trrackable.md
+  - Stores: stores.md
+  - Examples: examples.md
+  - API reference:
+      - Widgets: api/widgets.md
+      - Core: api/core.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - packages/trrack/src
+            - packages/trrack-widget/src
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_root_full_path: false
+            show_bases: false
+            show_source: false
+            merge_init_into_class: true
+            inherited_members: true
+            heading_level: 2
