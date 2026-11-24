@@ -75,7 +75,8 @@ class Trrackable(TargetWidget):
         Args:
             target (Any): The widget to track. It must be an anywidget.
             traits (list[str], optional): Trait names to record. Defaults to
-                the target's public synced traits.
+                the target's public synced traits. A loaded history keeps the
+                trait names it was saved with.
             debounce_ms (int, optional): Record a burst of changes within this
                 many milliseconds as one node. ``0`` records every change.
                 Useful for sliders.
@@ -94,6 +95,10 @@ class Trrackable(TargetWidget):
                 ``True``. The History button in the row also shows and hides
                 it.
             **kwargs (Any): Forwarded to ``anywidget.AnyWidget``.
+
+        Raises:
+            ValueError: If the store or ``restore`` holds a payload that is not
+                in a known format.
         """
         super().__init__(target, buttons=buttons, graph=graph, **kwargs)
         self._label_formatter = label_formatter

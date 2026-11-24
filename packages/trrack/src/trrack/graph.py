@@ -8,7 +8,18 @@ from dataclasses import asdict, dataclass
 
 @dataclass
 class Node:
-    """A single full-state snapshot and its position in the graph."""
+    """A full-state snapshot and its position in the graph.
+
+    Args:
+        id (str): The unique id of the node.
+        parent (str | None): The id of the parent node, or ``None`` for the
+            root.
+        children (list[str]): The ids of the child nodes, oldest first.
+        created_at (str): The creation time. Any string, such as an ISO 8601
+            time.
+        label (str): The text that names the node.
+        state (dict): The tracked values at this node, keyed by name.
+    """
 
     id: str
     parent: str | None
@@ -21,8 +32,8 @@ class Node:
 class ProvenanceGraph:
     """A branching graph of full-state snapshots.
 
-    Pure model: no widget or marimo imports. Timestamps are supplied by the
-    caller via ``now`` so the model performs no I/O and stays deterministic.
+    Each commit adds a node under the current node. You pass every timestamp
+    as ``now``, so the graph never reads the clock.
     """
 
     def __init__(
@@ -32,7 +43,15 @@ class ProvenanceGraph:
         now: str,
         root_id: str | None = None,
     ) -> None:
-        """Create the graph with a single root holding ``root_state``."""
+        """Create the graph with a single root holding ``root_state``.
+
+        Args:
+            root_state (dict): The state of the root node.
+            now (str): The creation time of the root. Any string, such as an
+                ISO 8601 time.
+            root_id (str, optional): The id of the root. Defaults to a new
+                random id.
+        """
         rid = root_id or uuid.uuid4().hex
         root = Node(
             id=rid,
@@ -74,7 +93,20 @@ class ProvenanceGraph:
         label: str | None = None,
         node_id: str | None = None,
     ) -> Node:
-        """Append ``state`` as a child of the current node and move there."""
+        """Append ``state`` as a child of the current node and move there.
+
+        Args:
+            state (dict): The state of the new node.
+            now (str): The creation time. Any string, such as an ISO 8601
+                time.
+            label (str, optional): The label of the new node. Defaults to a
+                list of the values that changed.
+            node_id (str, optional): The id of the new node. Defaults to a new
+                random id.
+
+        Returns:
+            Node: The new node.
+        """
         nid = node_id or uuid.uuid4().hex
         parent = self.current
         resolved_label = (
@@ -106,11 +138,21 @@ class ProvenanceGraph:
         node = self.current
         if not node.children:
             return None
-        self.current_id = node.children[-1]  # newest child (append order)
+        self.current_id = node.children[-1]
         return self.current
 
     def go_to(self, node_id: str) -> Node:
-        """Jump to ``node_id``; raises ``KeyError`` if it is unknown."""
+        """Move to the node with id ``node_id``.
+
+        Args:
+            node_id (str): The id of the node to go to.
+
+        Returns:
+            Node: The node that is now current.
+
+        Raises:
+            KeyError: If no node has this id.
+        """
         if node_id not in self.nodes:
             raise KeyError(node_id)
         self.current_id = node_id
@@ -130,7 +172,7 @@ class ProvenanceGraph:
 
     @classmethod
     def from_dict(cls, data: dict) -> ProvenanceGraph:
-        """Reconstruct a graph from :meth:`to_dict` output."""
+        """Rebuild a graph from ``to_dict()`` output."""
         tree = cls.__new__(cls)
         tree.nodes = {nid: Node(**nd) for nid, nd in data["nodes"].items()}
         tree.root_id = data["root_id"]

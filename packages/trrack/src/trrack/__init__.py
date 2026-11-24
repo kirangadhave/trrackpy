@@ -1,7 +1,7 @@
 """Branching history for Python state.
 
 ``ProvenanceGraph`` keeps every state as a node in a tree. A ``Store`` saves a
-payload somewhere, such as a file. Pure Python, with no UI dependencies.
+payload somewhere, such as a file.
 """
 
 from __future__ import annotations

@@ -54,7 +54,8 @@ class Persisted(TargetWidget):
             **kwargs (Any): Forwarded to ``anywidget.AnyWidget``.
 
         Raises:
-            ValueError: If the store holds a ``Trrackable`` graph.
+            ValueError: If the store holds a ``Trrackable`` graph, or a payload
+                that is not in a known format.
         """
         saved = store.load()
         kind, value = read_envelope(saved) if saved is not None else ("state", {})
