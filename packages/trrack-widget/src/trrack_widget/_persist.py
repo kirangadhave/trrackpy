@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import contextlib
+import sys
 import threading
 import weakref
 from typing import TYPE_CHECKING
@@ -16,6 +17,11 @@ if TYPE_CHECKING:
 
 # A burst of mutations within this window collapses into a single store write.
 _PERSIST_DEBOUNCE_MS = 150
+
+
+def _threads_available() -> bool:
+    # Pyodide cannot start a thread, so a timer thread is not an option there.
+    return sys.platform != "emscripten"
 
 
 class Debouncer:
@@ -30,6 +36,7 @@ class Debouncer:
         self._delay_s = delay_ms / 1000
         self._callback = callback
         self._timer: threading.Timer | None = None
+        self._handle: asyncio.Handle | None = None
         self._lock = threading.Lock()
         # The timer fires on a worker thread, which has none of marimo's
         # thread-local runtime context. The callback runs on the event loop of
@@ -37,7 +44,14 @@ class Debouncer:
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def schedule(self) -> None:
-        """Start the wait, or restart it if one is in progress."""
+        """Start the wait, or restart it if one is in progress.
+
+        Without thread support, the wait runs on the running event loop. If no
+        loop is running, nothing can run the callback later, so it runs now.
+        """
+        if not _threads_available():
+            self._schedule_on_loop()
+            return
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -58,11 +72,31 @@ class Debouncer:
         """
         with self._lock:
             timer = self._timer
+            handle = self._handle
             self._timer = None
-        if timer is None:
-            return False
-        timer.cancel()
-        return True
+            self._handle = None
+        if handle is not None:
+            handle.cancel()
+        if timer is not None:
+            timer.cancel()
+        return timer is not None or handle is not None
+
+    def _schedule_on_loop(self) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.cancel()
+            self._callback()
+            return
+        with self._lock:
+            if self._handle is not None:
+                self._handle.cancel()
+            self._handle = loop.call_later(self._delay_s, self._fire_on_loop)
+
+    def _fire_on_loop(self) -> None:
+        with self._lock:
+            self._handle = None
+        self._callback()
 
     def _fire(self) -> None:
         with self._lock:
