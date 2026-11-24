@@ -22,6 +22,7 @@ dev = [
     "wigglystuff>=0.5.14",
 ]
 docs = [
+    "marimo>=0.23.14",
     "mkdocstrings-python>=2.0.9",
     "zensical>=0.0.67",
 ]
@@ -59,6 +60,7 @@ required-imports = ["from __future__ import annotations"]
 "examples/*.py" = ["INP001"]
 # marimo owns the layout of its notebook files.
 "examples/*/*.py" = ["ALL"]
+"docs/live/*.py" = ["ALL"]
 
 # Lets the example notebooks import the widgets they share.
 [tool.marimo.runtime]

@@ -5,6 +5,8 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-yaml
+        # mkdocs.yml names a Python function with a `!!python/name` tag.
+        args: [--unsafe]
       - id: end-of-file-fixer
       - id: trailing-whitespace
 

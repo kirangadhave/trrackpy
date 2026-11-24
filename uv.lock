@@ -29,6 +29,7 @@ dev = [
     { name = "wigglystuff", specifier = ">=0.5.14" },
 ]
 docs = [
+    { name = "marimo", specifier = ">=0.23.14" },
     { name = "mkdocstrings-python", specifier = ">=2.0.9" },
     { name = "zensical", specifier = ">=0.0.67" },
 ]

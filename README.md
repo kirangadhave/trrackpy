@@ -1,4 +1,4 @@
-# trrackpy
+# <img src="docs/pages/assets/favicon.svg" alt="" width="32" height="32" align="top"> trrackpy
 
 [![CI](https://github.com/kirangadhave/trrackpy/actions/workflows/ci.yml/badge.svg)](https://github.com/kirangadhave/trrackpy/actions/workflows/ci.yml)
 [![PyPI - trrack](https://img.shields.io/pypi/v/trrack?label=trrack)](https://pypi.org/project/trrack/)
@@ -20,8 +20,6 @@ Trrackable(counter)                                      # undo, redo, and branc
 - A store decides where the state lives: a file, a database, the URL. Write
   your own with two methods.
 
-Both work with any [anywidget](https://anywidget.dev).
-
 ## Packages
 
 | Package | What | Docs |
@@ -31,16 +29,13 @@ Both work with any [anywidget](https://anywidget.dev).
 
 ## Examples
 
-Runnable notebooks are in [examples](examples/README.md).
+Runnable marimo notebooks are in [examples](examples/README.md).
 
 ## Contributing
 
-This is a [uv](https://docs.astral.sh/uv/) workspace. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for setup, the dev loop, and the release
-flow; agents, see [AGENTS.md](AGENTS.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the dev loop, and releases.
 
 ## License
 
-BSD-3-Clause. trrackpy is a Python sibling of
-[trrackjs](https://github.com/Trrack/trrackjs), bringing the same provenance
-model to the Python ecosystem.
+BSD-3-Clause. trrackpy is the Python sibling of
+[trrackjs](https://github.com/Trrack/trrackjs).

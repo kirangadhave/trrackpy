@@ -2,11 +2,13 @@
 
 marimo notebooks that show `Persisted` and `Trrackable` with different stores.
 
+<!-- --8<-- [start:widgets] -->
 Each notebook wraps the same three widgets:
 
 - a counter
 - a form with a text, a number, a flag, and a list
 - `Slider2D` from [wigglystuff](https://github.com/koaning/wigglystuff)
+<!-- --8<-- [end:widgets] -->
 
 ## Run one
 
@@ -20,23 +22,27 @@ uv run marimo edit examples/persisted/files.py
 
 Start here. `Persisted` saves a widget's state and restores it.
 
+<!-- --8<-- [start:persisted] -->
 | Notebook | Where the state lives |
 | --- | --- |
-| [persisted/files.py](persisted/files.py) | JSON files, with the built-in `JsonFileStore` |
-| [persisted/query_params.py](persisted/query_params.py) | The URL, with a store written in the notebook |
-| [persisted/sqlite.py](persisted/sqlite.py) | A SQLite database, with a store written in the notebook |
+| [persisted/files.py](https://github.com/kirangadhave/trrackpy/blob/main/examples/persisted/files.py) | JSON files, with the built-in `JsonFileStore` |
+| [persisted/query_params.py](https://github.com/kirangadhave/trrackpy/blob/main/examples/persisted/query_params.py) | The URL, with a store written in the notebook |
+| [persisted/sqlite.py](https://github.com/kirangadhave/trrackpy/blob/main/examples/persisted/sqlite.py) | A SQLite database, with a store written in the notebook |
+<!-- --8<-- [end:persisted] -->
 
 ## Trrackable
 
 `Trrackable` records every change as a history with undo and redo.
 
+<!-- --8<-- [start:trrackable] -->
 | Notebook | Where the history lives |
 | --- | --- |
-| [trrackable/files.py](trrackable/files.py) | JSON files, with the built-in `JsonFileStore` |
-| [trrackable/sqlite.py](trrackable/sqlite.py) | A SQLite database, with a store written in the notebook |
+| [trrackable/files.py](https://github.com/kirangadhave/trrackpy/blob/main/examples/trrackable/files.py) | JSON files, with the built-in `JsonFileStore` |
+| [trrackable/sqlite.py](https://github.com/kirangadhave/trrackpy/blob/main/examples/trrackable/sqlite.py) | A SQLite database, with a store written in the notebook |
+<!-- --8<-- [end:trrackable] -->
 
-There is no URL example for `Trrackable`. A history grows with every change,
-and it does not fit in a URL.
+There is no URL example for `Trrackable`, because a history does not fit in a
+URL.
 
 ## Layout
 

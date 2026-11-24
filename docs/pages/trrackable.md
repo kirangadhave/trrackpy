@@ -10,7 +10,11 @@ tracked = Trrackable(counter)
 tracked                    # shows the counter and its history
 ```
 
-![A widget with its history controls](assets/trrackable.png)
+See [How the history works](concepts.md).
+
+Try it here:
+
+<iframe class="live-example" src="live/trrackable/" title="Live Trrackable example" height="360" loading="lazy"></iframe>
 
 ## Navigate
 
@@ -23,8 +27,33 @@ tracked.go_to(node_id)          # jump to any node
 tracked.label("before tuning")  # name the current node
 ```
 
-Going back and then changing the widget starts a new branch. The earlier
-branch stays in the history.
+Going back and then changing the widget starts a
+[branch](concepts.md#branches).
+
+## Find a node id
+
+`go_to` takes a node id. The history is in `tracked.nodes`, a dict from id to
+node. `tracked.current_id` is the id of the current node:
+
+```python
+tracked.current_id                           # id of the current node
+
+for node_id, node in tracked.nodes.items():
+    print(node_id, node["label"])            # every node, with its label
+
+root_id = next(i for i, n in tracked.nodes.items() if n["parent"] is None)
+tracked.go_to(root_id)                       # back to the first state
+```
+
+## Read the values
+
+`state` holds the current values. `target` is the wrapped widget:
+
+```python
+tracked.state              # the current values, as a dict
+tracked.target             # the wrapped widget
+tracked.target.count = 3   # change a value, and it records a node
+```
 
 ## Show and hide the controls
 
@@ -33,7 +62,7 @@ The controls are a row of buttons and the history graph. Pass `buttons` and
 
 ```python
 Trrackable(counter, graph=False)                  # buttons only
-Trrackable(counter, buttons=False, graph=False)   # just the widget
+Trrackable(counter, buttons=False, graph=False)   # the widget only
 ```
 
 The History button in the row shows and hides the graph. You can do the same
@@ -61,6 +90,17 @@ a burst of changes as one node:
 Trrackable(slider, debounce_ms=300)
 ```
 
+A change waits `debounce_ms` before it becomes a node. Call `flush()` to
+record it now:
+
+```python
+tracked.flush()            # record the pending change
+```
+
+Call `flush()` before `to_dict()` or `save()` to include the latest change.
+`undo()`, `redo()`, and `go_to()` drop a pending change, so call `flush()`
+first to keep it. `flush()` does nothing when no change is pending.
+
 Pass trait names to record some of them only:
 
 ```python
@@ -69,7 +109,7 @@ Trrackable(slider, ["x", "y"])
 
 ## Name the nodes
 
-Each node gets a label from what changed, such as `count: 1 → 2`. Pass
+Each node gets a [label](concepts.md#labels) from what changed. Pass
 `label_formatter` to write your own from the old and new values:
 
 ```python
@@ -89,10 +129,31 @@ from trrack_widget import JsonFileStore
 Trrackable(counter, store=JsonFileStore("history.json"))
 ```
 
-A save runs about 150 ms after a change. If a save fails, the error appears
-under the widget, and the widget keeps working.
+Saves follow the same rules as in `Persisted`: see
+[when the state is saved](persisted.md#when-the-state-is-saved) and
+[when a save fails](persisted.md#when-a-save-fails).
 
-`Trrackable` can open a store that [`Persisted`](persisted.md) saved. The saved
-state becomes the first node of a new history.
+Call `save()` to save now and `close()` when you are done. `close()` records a
+pending change, saves, and closes the widget:
 
-See [Stores](stores.md) for how to write your own store.
+```python
+tracked.save()
+tracked.close()
+```
+
+`Trrackable` can open a store that [`Persisted`](persisted.md) saved. See
+[Stores](stores.md) to write your own store and to read the saved data.
+
+## Copy a history to another widget
+
+`to_dict()` gives the whole history as plain data. `Trrackable.from_dict`
+loads it onto a widget and sets the widget to the saved state:
+
+```python
+data = tracked.to_dict()
+
+other = Trrackable.from_dict(data, other_counter)
+```
+
+`from_dict` takes the same `debounce_ms`, `label_formatter`, `buttons`, and
+`graph` options as `Trrackable`.

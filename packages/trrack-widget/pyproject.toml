@@ -39,6 +39,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/kirangadhave/trrackpy"
+Documentation = "https://kirangadhave.me/trrackpy/"
 Repository = "https://github.com/kirangadhave/trrackpy"
 
 [tool.hatch.build]

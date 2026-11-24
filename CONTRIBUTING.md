@@ -1,7 +1,6 @@
 # Contributing to trrackpy
 
-Thanks for contributing. This guide gets you from a fresh clone to a green pull
-request.
+Thanks for contributing.
 
 ## Layout
 
@@ -14,9 +13,6 @@ trrackpy is a [uv](https://docs.astral.sh/uv/) workspace with two packages:
   wrappers: `Persisted` and `Trrackable`. It uses `trrack` from the local
   workspace, never the published package.
 - `examples` has runnable marimo notebooks.
-
-The core works on its own, to track the history of anything. The widgets are
-one use of it.
 
 ## Setup
 
@@ -60,8 +56,17 @@ uv run --group docs zensical serve    # preview with live reload
 uv run --group docs zensical build    # write the site to ./site
 ```
 
+Some pages embed live notebooks from `docs/live`. They run in the browser on
+wheels built from your checkout. Build them before you serve the site, and
+again after a change to a package or a live notebook:
+
+```sh
+docs/live/build.sh
+```
+
 The `Docs` workflow publishes the site to GitHub Pages. Run it by hand from
-the Actions tab. The release workflow also runs it as its last job.
+the Actions tab. The release workflow also runs it as its last job. CI builds
+the site on each pull request, and a broken link fails the build.
 
 ## Checks before a PR
 
@@ -83,66 +88,89 @@ uvx pre-commit run --all-files
 
 - [Conventional commits](https://www.conventionalcommits.org/): `feat:`, `fix:`,
   `chore:`, `docs:`, `refactor:`, `test:`.
-- Python is linted with ruff (`select = ["ALL"]`) and type-checked with `ty`;
-  both must stay clean. `from __future__ import annotations` is required at the
-  top of every module.
+- Python is linted with ruff (`select = ["ALL"]`) and type-checked with `ty`.
+  Both must stay clean.
+- `from __future__ import annotations` is required at the top of every module.
 - New files fall under the repository's BSD-3-Clause license.
+- A change that a user can see gets a line under "Unreleased" in
+  `CHANGELOG.md`.
 
 ## Where to add things
 
 - A change to the model or its algorithms goes in `packages/trrack`.
 - UI and widget wiring goes in `packages/trrack-widget`.
-- A new store is a class with `save(dict) -> None` and
-  `load() -> dict | None`. See the `trrack.Store` protocol.
+- A new store implements the `trrack.Store` protocol. See
+  [Stores](https://kirangadhave.me/trrackpy/stores/).
 - A new example notebook goes in `examples/persisted` or
   `examples/trrackable`.
 
 ## Releasing
 
-Both packages release **in lockstep**: they always carry the same version and
-are published together by one tag. The version string in each
-`pyproject.toml` is static — bump both.
+Both packages release in lockstep. They always carry the same version, and one
+tag publishes both. The version string in each `pyproject.toml` is static, so
+you bump both.
 
-Pre-releases use [PEP 440](https://peps.python.org/pep-0440/) suffixes
-(`0.0.1a1`, `0.0.1b1`, `0.0.1rc1`). `pip`/`uv` ignore pre-releases unless asked
-(`pip install --pre`, `uv pip install --prerelease=allow`), so a pre-release
-claims the name and exercises the pipeline without reaching general users.
+A pre-release uses a [PEP 440](https://peps.python.org/pep-0440/) suffix:
+`0.0.1a1`, `0.0.1b1`, or `0.0.1rc1`. `pip` and `uv` skip pre-releases unless
+you ask for them:
+
+- `pip install --pre`
+- `uv pip install --prerelease=allow`
+
+A pre-release claims the name and tests the pipeline. Users get it only when
+they ask for a pre-release.
 
 ### How a release runs
 
-`.github/workflows/release.yml` does the publishing. It triggers two ways:
+`.github/workflows/release.yml` publishes the packages. It starts in two ways:
 
-- **Tag push** (`vX.Y.Z` / `vX.Y.Za1`) → publishes to **PyPI**.
-- **Manual dispatch** with `target=testpypi` → publishes to **TestPyPI** (a dry
-  run); `target=pypi` is the manual escape hatch to real PyPI.
+- A tag push (`vX.Y.Z` or `vX.Y.Za1`) publishes to PyPI.
+- A manual dispatch with `target=testpypi` publishes to TestPyPI as a dry run.
+  A dispatch with `target=pypi` publishes to real PyPI by hand.
 
-The job order is: build both packages (a guard fails the run if the two
-versions differ, or if a tag's version doesn't match) → one publish job per
-package → on a tag, a **draft** GitHub Release with the wheels/sdists attached.
+The jobs run in this order:
+
+1. Build both packages. The run fails if the two versions differ. It also
+   fails if a tag does not match the package version.
+2. Publish each package in its own job.
+3. On a tag, draft a GitHub Release with the wheels and sdists attached.
+4. On a tag, publish the docs site.
 
 Publishing uses [PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/)
-(OIDC) — no API tokens. Each publish job runs in its own GitHub Environment so
-the two pending publishers have distinct `(owner, repo, workflow, environment)`
-tuples; PyPI requires that uniqueness, which a monorepo publishing two projects
-from one workflow would otherwise violate. The environments:
+(OIDC), so the repository holds no API tokens.
+
+Each publish job runs in its own GitHub Environment. PyPI needs each pending
+publisher to have a distinct `(owner, repo, workflow, environment)` tuple. One
+workflow that publishes two projects would break that rule without separate
+environments.
 
 | Index | trrack | trrack-widget | Approval gate |
 | --- | --- | --- | --- |
 | PyPI | `pypi` | `pypi-widget` | required reviewer |
-| TestPyPI | `testpypi` | `testpypi-widget` | none (fast dry runs) |
+| TestPyPI | `testpypi` | `testpypi-widget` | none, for fast dry runs |
 
 ### Cutting a release
 
-1. Bump the `version` in **both** package `pyproject.toml`s to the same value.
-2. (Optional) Dry run: Actions → Release → Run workflow → `target=testpypi`, then
-   verify both appear on test.pypi.org. Installing the widget pulls the core:
-   `uv pip install --prerelease=allow --index-url https://test.pypi.org/simple/
-   --extra-index-url https://pypi.org/simple/ trrack-widget` (the extra index
-   supplies `anywidget`, which is not on TestPyPI).
-3. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-4. Approve the `pypi` and `pypi-widget` deployments in the run.
-5. Review and publish the drafted GitHub Release.
+1. Set `version` in both package `pyproject.toml` files to the same value.
+2. Optional: do a dry run.
+    1. Go to Actions, then Release, then Run workflow. Set `target=testpypi`.
+    2. Check that both packages appear on test.pypi.org.
+    3. Install the widget to check that it pulls the core:
 
-One-time infrastructure (already configured for this repo): the four GitHub
-Environments above, and a pending/registered trusted publisher per project on
-each index.
+       ```sh
+       uv pip install --prerelease=allow \
+         --index-url https://test.pypi.org/simple/ \
+         --extra-index-url https://pypi.org/simple/ trrack-widget
+       ```
+
+       The extra index supplies `anywidget`, which TestPyPI does not have.
+3. In `CHANGELOG.md`, rename "Unreleased" to the new version and its date. Add
+   a new empty "Unreleased" section above it.
+4. Tag the release and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+5. In the run, approve the `pypi` and `pypi-widget` deployments.
+6. Review the drafted GitHub Release, then publish it.
+
+### One-time setup
+
+This repository already has the four GitHub Environments above. It also has a
+pending or registered trusted publisher for each project on each index.

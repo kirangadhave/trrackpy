@@ -1,0 +1,5 @@
+.live-example {
+  width: 100%;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 4px;
+}

@@ -43,3 +43,7 @@ examples/*/data/
 
 # Built docs site
 /site/
+
+# Live notebooks: `docs/live/build.sh` writes the wheels and the browser exports
+docs/live/public/
+docs/pages/live/

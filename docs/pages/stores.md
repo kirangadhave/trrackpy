@@ -27,7 +27,7 @@ class MyStore:
 ```
 
 `data` is a JSON-compatible dict. `save` gets it after each change, and `load`
-runs one time, when the wrapper is created.
+runs once, when the wrapper is created.
 
 ## Example: SQLite
 
@@ -75,8 +75,8 @@ thread.
 
 ## Example: the URL
 
-A store for `Persisted` can keep the plain values in its own shape. `to_state`
-gets them out of `data`, and `from_state` turns them back.
+A store for `Persisted` can save the plain values only. `to_state` takes them
+out of `data`, and `from_state` puts them back.
 
 This store keeps a widget's state in the URL of a marimo notebook, so a link
 restores the widget:
@@ -129,5 +129,5 @@ You only need this to read a saved file by hand. The data has a `type` and a
 
 - `Trrackable` can open a `state` file. The state becomes the first node of a
   new history.
-- `Persisted` does not open a `graph` file, because it would overwrite the
-  history.
+- `Persisted` raises `ValueError` for a `graph` file, because saving would
+  overwrite the history.

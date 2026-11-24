@@ -12,7 +12,9 @@ persisted                  # shows the counter
 Change the widget, restart the kernel, and run the cell again. The widget
 comes back as you left it.
 
-![Three widgets wrapped in Persisted](assets/persisted.png)
+Try it here. Click the counter, then make a new widget from the saved file:
+
+<iframe class="live-example" src="live/persisted/" title="Live Persisted example" height="400" loading="lazy"></iframe>
 
 ## What gets saved
 
@@ -26,7 +28,7 @@ Persisted(slider, ["x", "y"], store=JsonFileStore("slider.json"))
 ## Read and change the state
 
 ```python
-persisted.state            # the saved values, as a dict
+persisted.state            # the current values, as a dict
 persisted.target           # the wrapped widget
 persisted.target.count = 3 # change a value, and it saves
 ```
@@ -66,9 +68,8 @@ value for that trait, and a message under the widget names the trait.
 ## Run the cell again
 
 A new `Persisted` on the same widget takes over from the earlier one, so a
-change saves once. Call `close()` to stop saving by hand.
+change saves once. To stop saving, call `close()`.
 
-## Where the state lives
+## Choose a store
 
-The store decides. See [Stores](stores.md) for the built-in file store and how
-to write your own.
+See [Stores](stores.md) for the built-in file store and how to write your own.
