@@ -26,6 +26,32 @@ tracked.label("before tuning")  # name the current node
 Going back and then changing the widget starts a new branch. The earlier
 branch stays in the history.
 
+## Show and hide the controls
+
+The controls are a row of buttons and the history graph. Pass `buttons` and
+`graph` to choose which ones show:
+
+```python
+Trrackable(counter, graph=False)                  # buttons only
+Trrackable(counter, buttons=False, graph=False)   # just the widget
+```
+
+The History button in the row shows and hides the graph. You can do the same
+from Python:
+
+```python
+tracked.graph = True
+```
+
+`tracked.undo()` and the other actions work with the controls hidden.
+
+## Resize the graph
+
+Hover over the graph and drag the handle on its left edge. Click the lock
+button to keep the width.
+
+In a narrow notebook, the controls move below the widget.
+
 ## Record less
 
 A slider or a text field changes many times in a second. `debounce_ms` records

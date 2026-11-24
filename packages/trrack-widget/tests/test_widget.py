@@ -349,3 +349,52 @@ def test_close_stops_recording():
     counter.count = 1
 
     assert len(tt.nodes) == 1
+
+
+def test_buttons_and_graph_show_by_default():
+    tt = Trrackable(Counter())
+
+    assert tt.buttons is True
+    assert tt.graph is True
+
+
+def test_hidden_controls_are_synced_to_the_frontend():
+    tt = Trrackable(Counter(), buttons=False, graph=False)
+
+    state = tt.get_state()
+    assert state["buttons"] is False
+    assert state["graph"] is False
+
+
+def test_graph_can_be_hidden_after_construction():
+    tt = Trrackable(Counter())
+
+    tt.graph = False
+
+    assert tt.get_state()["graph"] is False
+
+
+def test_hidden_controls_still_record_and_navigate():
+    counter = Counter()
+    tt = Trrackable(counter, buttons=False, graph=False)
+
+    counter.count = 1
+    tt.undo()
+
+    assert len(tt.nodes) == 2
+    assert counter.count == 0
+
+
+def test_control_visibility_is_not_saved():
+    tt = Trrackable(Counter(), buttons=False, graph=False)
+
+    assert set(tt.to_dict()["value"]) == {"tracked", "tree"}
+
+
+def test_from_dict_sets_control_visibility():
+    payload = Trrackable(Counter()).to_dict()
+
+    restored = Trrackable.from_dict(payload, Counter(), buttons=False, graph=False)
+
+    assert restored.buttons is False
+    assert restored.graph is False

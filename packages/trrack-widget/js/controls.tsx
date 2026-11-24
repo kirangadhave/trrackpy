@@ -1,6 +1,22 @@
 import { createRender, useModelState } from "@anywidget/react"
-import { Check, Pencil, Redo2, RotateCcw, Undo2, X } from "lucide-react"
-import { type CSSProperties, type ReactNode, useRef, useState } from "react"
+import {
+  Check,
+  History,
+  Lock,
+  LockOpen,
+  Pencil,
+  Redo2,
+  RotateCcw,
+  Undo2,
+  X,
+} from "lucide-react"
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { type ComposeContext, showTargetAndStatus } from "./compose"
 
 interface Node {
@@ -20,8 +36,11 @@ const PAD_X = 14
 const DOT_R = 5
 const CORNER = 6
 const LABEL_W = 180
-const VIEW_W = 320
+const VIEW_W = 260
 const VIEW_H = 360
+const MIN_VIEW_W = 160
+const RESIZE_HANDLE_W = 6
+const RESIZE_HANDLE_H = 36
 
 const TRUNK_COLOR = "#2563eb"
 // Branch columns cycle through these so sibling branches stay distinct.
@@ -35,15 +54,50 @@ const BRANCH_COLORS = [
   "#f97316",
 ]
 
-const iconButtonStyle = {
+const HOVER_BG = "rgba(37,99,235,0.08)"
+
+const TOOLTIP_LOOK = {
+  padding: "3px 7px",
+  background: "#111827",
+  color: "#fff",
+  fontSize: 12,
+  borderRadius: 4,
+  whiteSpace: "nowrap",
+  pointerEvents: "none",
+  zIndex: 10,
+  boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+} as const
+
+const BUTTON_BASE = {
   display: "inline-flex",
   alignItems: "center",
   padding: 4,
-  background: "transparent",
   border: "none",
-  cursor: "pointer",
-  color: "#6b7280",
 } as const
+
+interface IconButtonProps {
+  label: string
+  onClick: () => void
+  children: ReactNode
+}
+
+function IconButton({ label, onClick, children }: IconButtonProps) {
+  return (
+    <button
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      style={{
+        ...BUTTON_BASE,
+        background: "transparent",
+        cursor: "pointer",
+        color: "#6b7280",
+      }}
+    >
+      {children}
+    </button>
+  )
+}
 
 const colColor = (col: number) =>
   col === 0 ? TRUNK_COLOR : BRANCH_COLORS[(col - 1) % BRANCH_COLORS.length]
@@ -157,13 +211,42 @@ interface GraphProps {
   currentId: string
   onSelect: (id: string) => void
   onRelabel: (id: string, text: string) => void
+  width: number
+  /** Called with the new width during a resize. Leave out to lock the size. */
+  onResize?: (width: number) => void
 }
 
-function Graph({ nodes, rootId, currentId, onSelect, onRelabel }: GraphProps) {
+interface ResizeDrag {
+  startX: number
+  startWidth: number
+}
+
+function Graph({
+  nodes,
+  rootId,
+  currentId,
+  onSelect,
+  onRelabel,
+  width,
+  onResize,
+}: GraphProps) {
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
+  const labelInput = useRef<HTMLInputElement>(null)
+  // The browser leaves the focus on the button that started the edit. Without
+  // this, the first key press goes to that button and not into the field.
+  useEffect(() => {
+    labelInput.current?.focus()
+    labelInput.current?.select()
+  }, [editId])
+  const [drag, setDrag] = useState<ResizeDrag | null>(null)
+  const [panelHover, setPanelHover] = useState(false)
 
+  const hoverHandlers = (id: string) => ({
+    onMouseEnter: () => setHoverId(id),
+    onMouseLeave: () => setHoverId(null),
+  })
   const startEdit = (id: string) => {
     setDraft(nodes[id].label)
     setEditId(id)
@@ -185,175 +268,198 @@ function Graph({ nodes, rootId, currentId, onSelect, onRelabel }: GraphProps) {
 
   return (
     <div
+      onMouseEnter={() => setPanelHover(true)}
+      onMouseLeave={() => setPanelHover(false)}
       style={{
-        width: VIEW_W,
+        boxSizing: "border-box",
+        position: "relative",
+        width,
         height: VIEW_H,
-        overflow: "auto",
+        overflow: "hidden",
         border: "1px solid #e5e7eb",
         borderRadius: 6,
       }}
     >
-      <div style={{ position: "relative", width: contentW, height: contentH }}>
-        <svg
-          width={gutterW}
-          height={contentH}
-          style={{ position: "absolute", top: 0, left: 0 }}
+      <div style={{ height: "100%", overflow: "auto" }}>
+        <div
+          style={{
+            position: "relative",
+            minWidth: contentW,
+            height: contentH,
+          }}
         >
-          {places.map((place) => {
-            const parentId = nodes[place.id].parent
-            if (!parentId || !byId[parentId]) return null
-            return (
-              <path
-                key={`edge-${place.id}`}
-                d={edgePath(byId[parentId], place, maxCol)}
-                fill="none"
-                stroke={colColor(place.col)}
-                strokeWidth={1.5}
-              />
-            )
-          })}
-          {places.map((place) => {
+          <svg
+            width={gutterW}
+            height={contentH}
+            style={{ position: "absolute", top: 0, left: 0 }}
+          >
+            {places.map((place) => {
+              const parentId = nodes[place.id].parent
+              if (!parentId || !byId[parentId]) return null
+              return (
+                <path
+                  key={`edge-${place.id}`}
+                  d={edgePath(byId[parentId], place, maxCol)}
+                  fill="none"
+                  stroke={colColor(place.col)}
+                  strokeWidth={1.5}
+                />
+              )
+            })}
+            {places.map((place) => {
+              const isCurrent = place.id === currentId
+              const isHover = place.id === hoverId
+              const color = colColor(place.col)
+              return (
+                <circle
+                  key={`dot-${place.id}`}
+                  cx={colX(place.col, maxCol)}
+                  cy={depthY(place.depth)}
+                  r={isCurrent || isHover ? DOT_R + 1 : DOT_R}
+                  fill={isCurrent ? color : "#fff"}
+                  stroke={color}
+                  strokeWidth={isCurrent ? 2 : 1.5}
+                  cursor="pointer"
+                  onClick={() => onSelect(place.id)}
+                  {...hoverHandlers(place.id)}
+                />
+              )
+            })}
+          </svg>
+          {trunk.map((place) => {
             const isCurrent = place.id === currentId
             const isHover = place.id === hoverId
-            const color = colColor(place.col)
+            const isEditing = place.id === editId
             return (
-              <circle
-                key={`dot-${place.id}`}
-                cx={colX(place.col, maxCol)}
-                cy={depthY(place.depth)}
-                r={isCurrent || isHover ? DOT_R + 1 : DOT_R}
-                fill={isCurrent ? color : "#fff"}
-                stroke={color}
-                strokeWidth={isCurrent ? 2 : 1.5}
-                cursor="pointer"
-                onClick={() => onSelect(place.id)}
-                onMouseEnter={() => setHoverId(place.id)}
-                onMouseLeave={() => setHoverId(null)}
-              />
+              <div
+                key={`label-${place.id}`}
+                {...hoverHandlers(place.id)}
+                style={{
+                  position: "absolute",
+                  top: place.depth * ROW_H,
+                  left: gutterW,
+                  right: 0,
+                  height: ROW_H,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  paddingLeft: 6,
+                  paddingRight: 4,
+                  boxSizing: "border-box",
+                  borderRadius: 4,
+                  background: isHover && !isEditing ? HOVER_BG : "transparent",
+                }}
+              >
+                {isEditing ? (
+                  <>
+                    <input
+                      ref={labelInput}
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") commitEdit()
+                        if (event.key === "Escape") setEditId(null)
+                      }}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontSize: 13,
+                        padding: "2px 4px",
+                        border: "1px solid #d1d5db",
+                        borderRadius: 4,
+                      }}
+                    />
+                    <IconButton label="Save" onClick={commitEdit}>
+                      <Check size={14} />
+                    </IconButton>
+                    <IconButton label="Cancel" onClick={() => setEditId(null)}>
+                      <X size={14} />
+                    </IconButton>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      title={nodes[place.id].label}
+                      onClick={() => onSelect(place.id)}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        cursor: "pointer",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontWeight: isCurrent ? 600 : 400,
+                        color: isCurrent ? "#111827" : "#374151",
+                      }}
+                    >
+                      {nodes[place.id].label}
+                    </span>
+                    {isHover && (
+                      <IconButton
+                        label="Edit label"
+                        onClick={() => startEdit(place.id)}
+                      >
+                        <Pencil size={13} />
+                      </IconButton>
+                    )}
+                  </>
+                )}
+              </div>
             )
           })}
-        </svg>
-        {trunk.map((place) => {
-          const isCurrent = place.id === currentId
-          const isHover = place.id === hoverId
-          const isEditing = place.id === editId
-          return (
+          {hoverId && byId[hoverId] && byId[hoverId].col !== 0 && (
             <div
-              key={`label-${place.id}`}
-              onMouseEnter={() => setHoverId(place.id)}
-              onMouseLeave={() => setHoverId(null)}
               style={{
                 position: "absolute",
-                top: place.depth * ROW_H,
-                left: gutterW,
-                width: LABEL_W,
-                height: ROW_H,
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                paddingLeft: 6,
-                paddingRight: 4,
-                boxSizing: "border-box",
-                borderRadius: 4,
-                background:
-                  isHover && !isEditing
-                    ? "rgba(37,99,235,0.08)"
-                    : "transparent",
+                left: colX(byId[hoverId].col, maxCol) + DOT_R + 8,
+                top: depthY(byId[hoverId].depth) - 11,
+                maxWidth: LABEL_W,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                ...TOOLTIP_LOOK,
               }}
             >
-              {isEditing ? (
-                <>
-                  <input
-                    autoFocus
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") commitEdit()
-                      if (event.key === "Escape") setEditId(null)
-                    }}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      fontSize: 13,
-                      padding: "2px 4px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: 4,
-                    }}
-                  />
-                  <button
-                    title="Save"
-                    aria-label="Save"
-                    onClick={commitEdit}
-                    style={iconButtonStyle}
-                  >
-                    <Check size={14} />
-                  </button>
-                  <button
-                    title="Cancel"
-                    aria-label="Cancel"
-                    onClick={() => setEditId(null)}
-                    style={iconButtonStyle}
-                  >
-                    <X size={14} />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span
-                    title={nodes[place.id].label}
-                    onClick={() => onSelect(place.id)}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      cursor: "pointer",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontWeight: isCurrent ? 600 : 400,
-                      color: isCurrent ? "#111827" : "#374151",
-                    }}
-                  >
-                    {nodes[place.id].label}
-                  </span>
-                  {isHover && (
-                    <button
-                      title="Edit label"
-                      aria-label="Edit label"
-                      onClick={() => startEdit(place.id)}
-                      style={iconButtonStyle}
-                    >
-                      <Pencil size={13} />
-                    </button>
-                  )}
-                </>
-              )}
+              {nodes[hoverId].label}
             </div>
-          )
-        })}
-        {hoverId && byId[hoverId] && byId[hoverId].col !== 0 && (
-          <div
-            style={{
-              position: "absolute",
-              left: colX(byId[hoverId].col, maxCol) + DOT_R + 8,
-              top: depthY(byId[hoverId].depth) - 11,
-              maxWidth: LABEL_W,
-              padding: "3px 7px",
-              background: "#111827",
-              color: "#fff",
-              fontSize: 12,
-              borderRadius: 4,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              pointerEvents: "none",
-              zIndex: 10,
-              boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-            }}
-          >
-            {nodes[hoverId].label}
-          </div>
-        )}
+          )}
+        </div>
       </div>
+      {/* The graph is at the right edge of the output, so its left edge is the
+          one that moves, and the handle is on that edge. */}
+      {onResize && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize history"
+          title="Drag to resize"
+          onPointerDown={(event) => {
+            // Capture keeps the drag alive when the pointer leaves the handle.
+            event.currentTarget.setPointerCapture(event.pointerId)
+            setDrag({ startX: event.clientX, startWidth: width })
+          }}
+          onPointerMove={(event) => {
+            if (!drag) return
+            const moved = drag.startX - event.clientX
+            onResize(Math.max(MIN_VIEW_W, drag.startWidth + moved))
+          }}
+          onPointerUp={() => setDrag(null)}
+          onPointerCancel={() => setDrag(null)}
+          style={{
+            position: "absolute",
+            left: 2,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: RESIZE_HANDLE_W,
+            height: RESIZE_HANDLE_H,
+            borderRadius: RESIZE_HANDLE_W / 2,
+            background: "#9ca3af",
+            opacity: panelHover || drag ? 1 : 0,
+            transition: "opacity 120ms",
+            cursor: "ew-resize",
+            touchAction: "none",
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -365,65 +471,65 @@ interface RelabelRequest {
 }
 
 const navButtonStyle = (disabled: boolean, hover: boolean): CSSProperties => ({
-  display: "inline-flex",
-  alignItems: "center",
-  padding: 4,
-  border: "none",
+  ...BUTTON_BASE,
   borderRadius: 4,
   color: "#374151",
-  background: hover && !disabled ? "rgba(37,99,235,0.08)" : "transparent",
+  background: hover && !disabled ? HOVER_BG : "transparent",
   cursor: disabled ? "default" : "pointer",
   opacity: disabled ? 0.3 : 1,
 })
 
-const navTooltipStyle: CSSProperties = {
-  position: "absolute",
-  top: "100%",
-  left: "50%",
-  transform: "translateX(-50%)",
-  marginTop: 4,
-  padding: "3px 7px",
-  background: "#111827",
-  color: "#fff",
-  fontSize: 12,
-  borderRadius: 4,
-  whiteSpace: "nowrap",
-  pointerEvents: "none",
-  zIndex: 10,
-  boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+type TipAlign = "center" | "end"
+
+// The tooltip is fixed to the viewport, not placed inside the button. A
+// tooltip inside the button adds to the scroll height of the notebook's output
+// area, which then shows a scroll bar when the controls are one short row.
+const navTooltipStyle = (align: TipAlign, anchor: DOMRect): CSSProperties => ({
+  position: "fixed",
+  top: anchor.bottom + 4,
+  ...(align === "center"
+    ? { left: anchor.left + anchor.width / 2, transform: "translateX(-50%)" }
+    : { right: document.documentElement.clientWidth - anchor.right }),
+  ...TOOLTIP_LOOK,
+})
+
+interface BarAction {
+  tip: string
+  icon: ReactNode
+  disabled?: boolean
+  onClick: () => void
 }
 
-interface NavButtonProps {
-  tip: string
-  disabled: boolean
-  onClick: () => void
-  wrapperStyle?: CSSProperties
+type NavButtonProps = Omit<BarAction, "icon"> & {
+  tipAlign: TipAlign
   children: ReactNode
 }
 
 function NavButton({
   tip,
-  disabled,
+  tipAlign,
+  disabled = false,
   onClick,
-  wrapperStyle,
   children,
 }: NavButtonProps) {
-  const [hover, setHover] = useState(false)
+  const [anchor, setAnchor] = useState<DOMRect | null>(null)
   return (
     <div
-      style={{ position: "relative", display: "inline-flex", ...wrapperStyle }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      style={{ display: "inline-flex" }}
+      onMouseEnter={(event) =>
+        setAnchor(event.currentTarget.getBoundingClientRect())
+      }
+      onMouseLeave={() => setAnchor(null)}
     >
       <button
         aria-label={tip}
         disabled={disabled}
         onClick={onClick}
-        style={navButtonStyle(disabled, hover)}
+        style={navButtonStyle(disabled, anchor !== null)}
       >
         {children}
       </button>
-      {hover && <div style={navTooltipStyle}>{tip}</div>}
+      {anchor && <div style={navTooltipStyle(tipAlign, anchor)}>{tip}</div>}
     </div>
   )
 }
@@ -432,6 +538,11 @@ function Controls() {
   const [nodes] = useModelState<Nodes>("nodes")
   const [currentId, setCurrentId] = useModelState<string>("current_id")
   const [, setRelabel] = useModelState<RelabelRequest>("_relabel")
+  const [showButtons] = useModelState<boolean>("buttons")
+  const [showGraph, setShowGraph] = useModelState<boolean>("graph")
+  // The width is kept here so the graph has the same size after a hide.
+  const [graphWidth, setGraphWidth] = useState(VIEW_W)
+  const [sizeLocked, setSizeLocked] = useState(false)
   const nonce = useRef(0)
   const rootId = Object.keys(nodes).find((id) => nodes[id].parent === null)
   const current = nodes[currentId]
@@ -458,39 +569,76 @@ function Controls() {
     ? "Already at initial state"
     : `Reset to “${rootLabel}”`
 
+  const navigation: BarAction[] = [
+    {
+      tip: undoTip,
+      icon: <Undo2 size={16} />,
+      disabled: atRoot,
+      onClick: () => current?.parent && setCurrentId(current.parent),
+    },
+    {
+      tip: redoTip,
+      icon: <Redo2 size={16} />,
+      disabled: atLeaf,
+      onClick: () => redoChildId && setCurrentId(redoChildId),
+    },
+  ]
+  const lock: BarAction = {
+    tip: sizeLocked ? "Unlock size" : "Lock size",
+    icon: sizeLocked ? <Lock size={16} /> : <LockOpen size={16} />,
+    onClick: () => setSizeLocked(!sizeLocked),
+  }
+  const view: BarAction[] = [
+    {
+      tip: resetTip,
+      icon: <RotateCcw size={16} />,
+      disabled: resetDisabled,
+      onClick: () => rootId && setCurrentId(rootId),
+    },
+    ...(showGraph ? [lock] : []),
+    {
+      tip: showGraph ? "Hide history" : "Show history",
+      icon: <History size={16} />,
+      onClick: () => setShowGraph(!showGraph),
+    },
+  ]
+  const buttons = (actions: BarAction[], tipAlign: TipAlign) =>
+    actions.map(({ icon, ...action }) => (
+      <NavButton key={action.tip} tipAlign={tipAlign} {...action}>
+        {icon}
+      </NavButton>
+    ))
+
   return (
-    <div style={{ fontFamily: "system-ui", fontSize: 13 }}>
-      <div style={{ display: "flex", gap: 6, marginBottom: 6, width: VIEW_W }}>
-        <NavButton
-          tip={undoTip}
-          disabled={atRoot}
-          onClick={() => current?.parent && setCurrentId(current.parent)}
-        >
-          <Undo2 size={16} />
-        </NavButton>
-        <NavButton
-          tip={redoTip}
-          disabled={atLeaf}
-          onClick={() => redoChildId && setCurrentId(redoChildId)}
-        >
-          <Redo2 size={16} />
-        </NavButton>
-        <NavButton
-          tip={resetTip}
-          disabled={resetDisabled}
-          wrapperStyle={{ marginLeft: "auto" }}
-          onClick={() => rootId && setCurrentId(rootId)}
-        >
-          <RotateCcw size={16} />
-        </NavButton>
-      </div>
-      {rootId && (
+    <div
+      style={{
+        fontFamily: "system-ui",
+        fontSize: 13,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+      }}
+    >
+      {showButtons && (
+        <div style={{ display: "flex", gap: showGraph ? 6 : 2 }}>
+          {/* With the graph shown, the bar has the width of the graph, and
+              the spacer pushes the view buttons to its right end. A button at
+              the right edge of the output needs an end-aligned tooltip,
+              because a centered one would cross that edge. */}
+          {buttons(navigation, showGraph ? "center" : "end")}
+          <div style={{ flex: 1 }} />
+          {buttons(view, "end")}
+        </div>
+      )}
+      {showGraph && rootId && (
         <Graph
           nodes={nodes}
           rootId={rootId}
           currentId={currentId}
           onSelect={setCurrentId}
           onRelabel={onRelabel}
+          width={graphWidth}
+          onResize={sizeLocked ? undefined : setGraphWidth}
         />
       )}
     </div>
@@ -504,15 +652,25 @@ type RenderContext = Parameters<typeof renderApp>[0] & ComposeContext
 export default {
   render(ctx: RenderContext) {
     const row = document.createElement("div")
-    row.style.cssText = "display:flex;gap:16px;align-items:flex-start"
+    // A target that is too wide to sit next to the controls keeps its width,
+    // and the controls wrap to the next line.
+    row.style.cssText =
+      "display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start"
     // The target stays in the light DOM so it keeps the host's own styles.
     const slot = document.createElement("div")
-    slot.style.cssText = "flex:1;min-width:0"
+    slot.style.cssText = "flex:1 1 auto;min-width:0"
+    // A widget can replace the whole style of the element it renders into.
+    // It gets its own element, so the slot keeps the styles of the row.
+    const target = document.createElement("div")
+    slot.append(target)
     const controlsHost = document.createElement("div")
+    // The controls stay at the right edge after a wrap too, so the left edge
+    // of the graph is always the one that a resize moves.
+    controlsHost.style.cssText = "margin-left:auto"
     const status = document.createElement("div")
     row.append(slot, controlsHost)
     ctx.el.replaceChildren(row, status)
-    const stopStatus = showTargetAndStatus(ctx, slot, status)
+    const stopStatus = showTargetAndStatus(ctx, target, status)
 
     // The controls mount in their own shadow root so they are style-isolated
     // from the host in every environment. Jupyter renders widgets into light

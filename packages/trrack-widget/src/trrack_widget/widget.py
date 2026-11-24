@@ -31,6 +31,9 @@ class Trrackable(TargetWidget):
     changes. Displaying a ``Trrackable`` shows the target with the history
     controls next to it. If a save fails, the error appears under them.
 
+    The controls are a row of buttons and the history graph. Set ``buttons``
+    and ``graph`` to show or hide them.
+
     Examples:
         ```python
         from trrack_widget import Trrackable
@@ -39,10 +42,17 @@ class Trrackable(TargetWidget):
         tracked  # displays the counter and its history
         tracked.undo()
         ```
+
+        ```python
+        tracked = Trrackable(counter, graph=False)  # buttons only
+        tracked.graph = True  # show the graph
+        ```
     """
 
     nodes = traitlets.Dict().tag(sync=True)
     current_id = traitlets.Unicode().tag(sync=True)
+    buttons = traitlets.Bool(default_value=True).tag(sync=True)
+    graph = traitlets.Bool(default_value=True).tag(sync=True)
     _relabel = traitlets.Dict(allow_none=True).tag(sync=True)
 
     _esm = _STATIC / "controls.js"
@@ -56,6 +66,8 @@ class Trrackable(TargetWidget):
         store: Store | None = None,
         restore: dict | None = None,
         label_formatter: Callable[[dict, dict], str] | None = None,
+        buttons: bool = True,
+        graph: bool = True,
         **kwargs: Any,
     ) -> None:
         """Wrap ``target`` and record its tracked traits.
@@ -76,9 +88,14 @@ class Trrackable(TargetWidget):
             label_formatter (Callable[[dict, dict], str], optional): Builds a
                 node's label from the old and new tracked values. Defaults to
                 a list of what changed, such as ``count: 1 → 2``.
+            buttons (bool, optional): Show the row of buttons. Defaults to
+                ``True``.
+            graph (bool, optional): Show the history graph. Defaults to
+                ``True``. The History button in the row also shows and hides
+                it.
             **kwargs (Any): Forwarded to ``anywidget.AnyWidget``.
         """
-        super().__init__(target, **kwargs)
+        super().__init__(target, buttons=buttons, graph=graph, **kwargs)
         self._label_formatter = label_formatter
         self._commit_debouncer = (
             Debouncer(debounce_ms, self._commit) if debounce_ms > 0 else None
@@ -216,13 +233,15 @@ class Trrackable(TargetWidget):
         )
 
     @classmethod
-    def from_dict(
+    def from_dict(  # noqa: PLR0913 — the same optional config as the constructor
         cls,
         data: dict,
         target: Any,
         *,
         debounce_ms: int = 0,
         label_formatter: Callable[[dict, dict], str] | None = None,
+        buttons: bool = True,
+        graph: bool = True,
     ) -> Trrackable:
         """Rebuild a ``Trrackable`` from ``to_dict()`` output.
 
@@ -232,6 +251,8 @@ class Trrackable(TargetWidget):
             debounce_ms (int, optional): See ``Trrackable``.
             label_formatter (Callable[[dict, dict], str], optional): See
                 ``Trrackable``.
+            buttons (bool, optional): See ``Trrackable``.
+            graph (bool, optional): See ``Trrackable``.
 
         Returns:
             Trrackable: A widget that tracks ``target`` with the saved history.
@@ -241,4 +262,6 @@ class Trrackable(TargetWidget):
             debounce_ms=debounce_ms,
             label_formatter=label_formatter,
             restore=data,
+            buttons=buttons,
+            graph=graph,
         )
