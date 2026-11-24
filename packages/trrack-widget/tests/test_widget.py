@@ -6,7 +6,7 @@ import time
 import anywidget
 import pytest
 import traitlets
-from helpers import FlakyStore, RecordingStore
+from helpers import SAVE_WAIT_S, FlakyStore, RecordingStore
 
 from trrack import JsonFileStore
 from trrack_widget import Trrackable
@@ -301,12 +301,12 @@ def test_failed_background_save_shows_an_error_then_clears():
 
     store.broken = True
     counter.count = 1
-    time.sleep(0.15)
+    time.sleep(SAVE_WAIT_S)
     assert tt.error == "Could not save: disk is full"
 
     store.broken = False
     counter.count = 2
-    time.sleep(0.15)
+    time.sleep(SAVE_WAIT_S)
     assert tt.error == ""
 
 

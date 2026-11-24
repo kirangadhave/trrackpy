@@ -5,6 +5,11 @@ import pytest
 from trrack.graph import Node, ProvenanceGraph
 
 
+@pytest.fixture
+def tree():
+    return ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+
+
 def test_root_node_created_from_state():
     tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
     root = tree.root
@@ -19,8 +24,7 @@ def test_root_node_created_from_state():
     assert tree.current_id == "r"
 
 
-def test_commit_appends_child_and_advances_current():
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+def test_commit_appends_child_and_advances_current(tree):
     node = tree.commit({"count": 1}, now="t1", node_id="a")
     assert node.id == "a"
     assert node.parent == "r"
@@ -36,14 +40,12 @@ def test_auto_label_multiple_traits_sorted():
     assert node.label == "a: 1 → 2, b: 1 → 3"
 
 
-def test_explicit_label_overrides_auto():
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+def test_explicit_label_overrides_auto(tree):
     node = tree.commit({"count": 1}, now="t1", label="mine")
     assert node.label == "mine"
 
 
-def test_undo_moves_to_parent_and_stops_at_root():
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+def test_undo_moves_to_parent_and_stops_at_root(tree):
     tree.commit({"count": 1}, now="t1", node_id="a")
     parent = tree.undo()
     assert parent is not None
@@ -52,8 +54,7 @@ def test_undo_moves_to_parent_and_stops_at_root():
     assert tree.current_id == "r"
 
 
-def test_redo_follows_newest_child():
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+def test_redo_follows_newest_child(tree):
     tree.commit({"count": 1}, now="t1", node_id="a")
     tree.undo()
     tree.commit({"count": 2}, now="t2", node_id="b")  # sibling of "a"
@@ -64,8 +65,7 @@ def test_redo_follows_newest_child():
     assert tree.redo() is None  # "b" is a leaf
 
 
-def test_commit_after_undo_creates_branch():
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+def test_commit_after_undo_creates_branch(tree):
     tree.commit({"count": 1}, now="t1", node_id="a")
     tree.undo()
     tree.commit({"count": 9}, now="t2", node_id="b")
@@ -74,21 +74,18 @@ def test_commit_after_undo_creates_branch():
     assert tree.nodes["b"].parent == "r"
 
 
-def test_go_to_sets_current():
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+def test_go_to_sets_current(tree):
     tree.commit({"count": 1}, now="t1", node_id="a")
     assert tree.go_to("r").id == "r"
     assert tree.current_id == "r"
 
 
-def test_go_to_unknown_raises():
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+def test_go_to_unknown_raises(tree):
     with pytest.raises(KeyError):
         tree.go_to("nope")
 
 
-def test_relabel_current_and_explicit():
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+def test_relabel_current_and_explicit(tree):
     tree.commit({"count": 1}, now="t1", node_id="a")
     tree.relabel("renamed")
     assert tree.nodes["a"].label == "renamed"
@@ -96,8 +93,7 @@ def test_relabel_current_and_explicit():
     assert tree.nodes["r"].label == "root!"
 
 
-def test_to_dict_from_dict_round_trip():
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+def test_to_dict_from_dict_round_trip(tree):
     tree.commit({"count": 1}, now="t1", node_id="a")
     tree.undo()
     tree.commit({"count": 9}, now="t2", node_id="b")
@@ -116,8 +112,7 @@ def test_to_dict_from_dict_round_trip():
     assert restored.to_dict() == d
 
 
-def test_is_at_root_and_is_at_latest():
-    tree = ProvenanceGraph({"count": 0}, now="t0", root_id="r")
+def test_is_at_root_and_is_at_latest(tree):
     assert tree.is_at_root
     assert tree.is_at_latest
 

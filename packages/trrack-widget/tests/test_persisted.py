@@ -6,13 +6,10 @@ import time
 import anywidget
 import pytest
 import traitlets
-from helpers import FlakyStore, RecordingStore
+from helpers import SAVE_WAIT_S, FlakyStore, RecordingStore
 
 from trrack import JsonFileStore
 from trrack_widget import Persisted
-
-# Longer than the save window that conftest.py sets, so a pending save lands.
-_AFTER_COALESCE_WINDOW_S = 0.15
 
 
 class Counter(anywidget.AnyWidget):
@@ -47,7 +44,7 @@ def test_burst_of_changes_gives_one_write():
     for i in range(1, 6):
         counter.count = i
     assert len(store.saves) == 1  # the burst is still inside the window
-    time.sleep(_AFTER_COALESCE_WINDOW_S)
+    time.sleep(SAVE_WAIT_S)
 
     assert len(store.saves) == 2
     assert store.saves[-1]["value"]["count"] == 5
@@ -101,7 +98,7 @@ def test_failed_construction_leaves_target_unobserved():
         Persisted(counter, store=store)
 
     counter.count = 1
-    time.sleep(_AFTER_COALESCE_WINDOW_S)
+    time.sleep(SAVE_WAIT_S)
 
     assert store.saves == []
 
@@ -136,7 +133,7 @@ def test_restore_does_not_write_to_store():
     Persisted(counter, store=store)
     assert counter.count == 4
 
-    time.sleep(_AFTER_COALESCE_WINDOW_S)
+    time.sleep(SAVE_WAIT_S)
 
     assert store.saves == []
 
@@ -186,7 +183,7 @@ def test_reset_writes_once():
     writes = len(store.saves)
 
     persisted.reset()
-    time.sleep(_AFTER_COALESCE_WINDOW_S)
+    time.sleep(SAVE_WAIT_S)
 
     assert len(store.saves) == writes + 1
 
@@ -210,7 +207,7 @@ def test_failed_background_save_shows_an_error():
 
     store.broken = True
     counter.count = 1
-    time.sleep(_AFTER_COALESCE_WINDOW_S)
+    time.sleep(SAVE_WAIT_S)
 
     assert persisted.error == "Could not save: disk is full"
 
@@ -221,12 +218,12 @@ def test_error_clears_after_the_next_good_save():
     persisted = Persisted(counter, store=store)
     store.broken = True
     counter.count = 1
-    time.sleep(_AFTER_COALESCE_WINDOW_S)
+    time.sleep(SAVE_WAIT_S)
     assert persisted.error
 
     store.broken = False
     counter.count = 2
-    time.sleep(_AFTER_COALESCE_WINDOW_S)
+    time.sleep(SAVE_WAIT_S)
 
     assert persisted.error == ""
     assert store.data == {"type": "state", "value": {"count": 2, "step": 1}}
@@ -279,7 +276,7 @@ def test_new_wrapper_replaces_the_old_one_on_the_same_widget():
     writes = len(store.saves)
 
     counter.count = 1
-    time.sleep(_AFTER_COALESCE_WINDOW_S)
+    time.sleep(SAVE_WAIT_S)
 
     assert len(store.saves) == writes + 1
 
@@ -295,7 +292,7 @@ def test_close_stops_saving():
     assert store.data == {"type": "state", "value": {"count": 1, "step": 1}}
 
     counter.count = 2
-    time.sleep(_AFTER_COALESCE_WINDOW_S)
+    time.sleep(SAVE_WAIT_S)
 
     assert len(store.saves) == writes
 
