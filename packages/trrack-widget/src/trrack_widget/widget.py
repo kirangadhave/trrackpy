@@ -56,6 +56,7 @@ class Trrackable(TargetWidget):
     _relabel = traitlets.Dict(allow_none=True).tag(sync=True)
 
     _esm = _STATIC / "controls.js"
+    _kind = "trrackable"
 
     def __init__(  # noqa: PLR0913 — rich public constructor: target + optional config
         self,
@@ -106,7 +107,9 @@ class Trrackable(TargetWidget):
             Debouncer(debounce_ms, self._commit) if debounce_ms > 0 else None
         )
         self._writer = (
-            CoalescedWriter(store, self.to_dict, self._on_save_result)
+            CoalescedWriter(
+                store, self.to_dict, self._on_save_result, drain=self._record_pending
+            )
             if store is not None
             else None
         )
@@ -143,7 +146,7 @@ class Trrackable(TargetWidget):
         with self._guard():
             self.current_id = snapshot["current_id"]
 
-    def _commit(self) -> None:
+    def _record(self) -> None:
         new_state = self.state
         label = (
             self._label_formatter(self._tree.current.state, new_state)
@@ -152,7 +155,24 @@ class Trrackable(TargetWidget):
         )
         self._tree.commit(new_state, now=_now(), label=label)
         self._sync_tree()
+
+    def _commit(self) -> None:
+        self._record()
         self._schedule_persist()
+
+    def _record_pending(self) -> bool:
+        """Record a change that waits for the debounce.
+
+        It does not schedule a save, so a caller that saves next can use it at
+        interpreter exit, where a new timer cannot start.
+
+        Returns:
+            bool: Whether a change was recorded.
+        """
+        if self._commit_debouncer is None or not self._commit_debouncer.cancel():
+            return False
+        self._record()
+        return True
 
     def _on_target_change(self, _change: dict) -> None:
         if self._internal:
@@ -162,26 +182,24 @@ class Trrackable(TargetWidget):
         else:
             self._commit()
 
-    def _cancel_pending_commit(self) -> bool:
-        return self._commit_debouncer is not None and self._commit_debouncer.cancel()
-
     def flush(self) -> None:
         """Record a pending debounced change now, if there is one."""
-        if self._cancel_pending_commit():
-            self._commit()
+        if self._record_pending():
+            self._schedule_persist()
 
     def _schedule_persist(self) -> None:
         if self._writer is not None:
             self._writer.schedule()
 
     def _unfollow_target(self) -> None:
-        self.flush()
+        if self._following:
+            self.flush()
         super()._unfollow_target()
 
     def _navigate(self, move: Callable[[], Node | None]) -> None:
-        # A change that waits for the debounce belongs to the node that the
-        # history leaves, so it must not land on the node it goes to.
-        self._cancel_pending_commit()
+        # A change that waits for the debounce becomes a node first. The move
+        # then starts from that node, and a redo can bring the change back.
+        self.flush()
         node = move()
         if node is None:
             return

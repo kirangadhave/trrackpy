@@ -118,18 +118,6 @@ def test_flush_commits_pending_debounced_change():
     assert tt.nodes[tt.current_id]["state"] == {"count": 2}
 
 
-def test_navigation_cancels_pending_debounced_change():
-    counter = Counter()
-    tt = Trrackable(counter, debounce_ms=10000)
-    counter.count = 1
-    tt.flush()  # commit a real node so undo has somewhere to go
-    counter.count = 5  # pending burst
-    tt.undo()  # navigating away discards the uncommitted burst
-    tt.flush()
-    assert len(tt.nodes) == 2
-    assert counter.count == 0
-
-
 def test_to_dict_from_dict_restores_tree_and_target():
     counter = Counter()
     tt = Trrackable(counter)

@@ -35,6 +35,7 @@ class Persisted(TargetWidget):
     """
 
     _esm = _STATIC / "persisted.js"
+    _kind = "persisted"
 
     def __init__(
         self,

@@ -346,21 +346,17 @@ def test_saves_do_not_overlap():
 
 
 def test_pending_save_is_written_at_exit():
-    from trrack_widget._persist import _flush_at_exit
+    from trrack_widget._persist import _flush_all_at_exit
 
     store = RecordingStore()
     counter = Counter()
-    persisted = Persisted(counter, store=store)
+    Persisted(counter, store=store)
     counter.count = 3
 
-    import weakref
-
-    writer = persisted._writer
-    assert writer is not None
-    _flush_at_exit(weakref.ref(writer))
+    _flush_all_at_exit()
 
     assert store.data == {"type": "state", "value": {"count": 3, "step": 1}}
 
     writes = len(store.saves)
-    _flush_at_exit(weakref.ref(writer))
+    _flush_all_at_exit()
     assert len(store.saves) == writes

@@ -97,9 +97,9 @@ record it now:
 tracked.flush()            # record the pending change
 ```
 
-Call `flush()` before `to_dict()` or `save()` to include the latest change.
-`undo()`, `redo()`, and `go_to()` drop a pending change, so call `flush()`
-first to keep it. `flush()` does nothing when no change is pending.
+`save()`, `close()`, `undo()`, `redo()`, and `go_to()` record a pending change
+first. Call `flush()` before `to_dict()` to include it. `flush()` does nothing
+when no change is pending.
 
 Pass trait names to record some of them only:
 

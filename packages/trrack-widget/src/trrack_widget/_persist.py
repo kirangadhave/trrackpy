@@ -38,10 +38,9 @@ class Debouncer:
         self._timer: threading.Timer | None = None
         self._handle: asyncio.Handle | None = None
         self._lock = threading.Lock()
-        # The timer fires on a worker thread, which has none of marimo's
-        # thread-local runtime context. The callback runs on the event loop of
-        # the thread that called schedule().
-        self._loop: asyncio.AbstractEventLoop | None = None
+        # Counts the waits. A timer can fire in the moment that a cancel or a
+        # new wait replaces it, and the count tells that timer it is stale.
+        self._wait = 0
 
     def schedule(self) -> None:
         """Start the wait, or restart it if one is in progress.
@@ -52,14 +51,18 @@ class Debouncer:
         if not _threads_available():
             self._schedule_on_loop()
             return
+        # The timer fires on a worker thread, which has none of marimo's
+        # thread-local runtime context. The callback runs on the event loop of
+        # the thread that called schedule().
         try:
-            self._loop = asyncio.get_running_loop()
+            loop = asyncio.get_running_loop()
         except RuntimeError:
-            self._loop = None
+            loop = None
         with self._lock:
             if self._timer is not None:
                 self._timer.cancel()
-            timer = threading.Timer(self._delay_s, self._fire)
+            self._wait += 1
+            timer = threading.Timer(self._delay_s, self._fire, (self._wait, loop))
             timer.daemon = True
             self._timer = timer
             timer.start()
@@ -75,6 +78,7 @@ class Debouncer:
             handle = self._handle
             self._timer = None
             self._handle = None
+            self._wait += 1
         if handle is not None:
             handle.cancel()
         if timer is not None:
@@ -98,10 +102,11 @@ class Debouncer:
             self._handle = None
         self._callback()
 
-    def _fire(self) -> None:
+    def _fire(self, wait: int, loop: asyncio.AbstractEventLoop | None) -> None:
         with self._lock:
+            if wait != self._wait:
+                return
             self._timer = None
-        loop = self._loop
         if loop is not None and loop.is_running():
             loop.call_soon_threadsafe(self._callback)
         else:
@@ -117,6 +122,9 @@ class CoalescedWriter:
             write time, so each write holds the latest state.
         on_result (Callable[[Exception | None], None], optional): Called after
             each write with the error, or ``None`` if the write worked.
+        drain (Callable[[], bool], optional): Puts work that is not in the
+            payload yet into it, and returns whether there was any. It runs
+            before a write that the owner asks for, and at interpreter exit.
     """
 
     def __init__(
@@ -124,17 +132,18 @@ class CoalescedWriter:
         store: Store,
         payload: Callable[[], dict],
         on_result: Callable[[Exception | None], None] | None = None,
+        *,
+        drain: Callable[[], bool] | None = None,
     ) -> None:
         self._store = store
         self._payload = payload
         self._on_result = on_result
+        self._drain = drain
         self._debouncer = Debouncer(_PERSIST_DEBOUNCE_MS, self.flush_quietly)
         # A timer write and a direct write can run on different threads. A
         # store must never see two saves at one time.
         self._write_lock = threading.Lock()
-        # The timer thread is a daemon, so the interpreter does not wait for
-        # it. Without this, a change made just before exit is never saved.
-        atexit.register(_flush_at_exit, weakref.ref(self))
+        _writers.add(self)
 
     def schedule(self) -> None:
         """Write soon. Calls close together share one write."""
@@ -142,6 +151,8 @@ class CoalescedWriter:
 
     def flush(self) -> None:
         """Write now, in place of any pending write. Raises if the save fails."""
+        if self._drain is not None:
+            self._drain()
         self._debouncer.cancel()
         self._write()
 
@@ -153,7 +164,8 @@ class CoalescedWriter:
 
     def flush_if_pending(self) -> None:
         """Write now if a write is waiting. Reports a failure, never raises."""
-        if self._debouncer.cancel():
+        drained = self._drain is not None and self._drain()
+        if self._debouncer.cancel() or drained:
             self.flush_quietly()
 
     def _write(self) -> None:
@@ -170,7 +182,17 @@ class CoalescedWriter:
             self._on_result(error)
 
 
-def _flush_at_exit(writer_ref: weakref.ref[CoalescedWriter]) -> None:
-    writer = writer_ref()
-    if writer is not None:
-        writer.flush_if_pending()
+_writers: weakref.WeakSet[CoalescedWriter] = weakref.WeakSet()
+
+
+def _flush_all_at_exit() -> None:
+    for writer in list(_writers):
+        # One writer that fails must not stop the others from saving.
+        with contextlib.suppress(Exception):
+            writer.flush_if_pending()
+
+
+# The timer thread is a daemon, so the interpreter does not wait for it.
+# Without this hook, a change made just before exit is never saved. One hook
+# serves every writer, so a notebook that makes many writers adds no more.
+atexit.register(_flush_all_at_exit)

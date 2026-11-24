@@ -15,6 +15,13 @@
 ### Changed
 
 - In a narrow notebook, the controls move below the widget.
+- With `debounce_ms`, `undo()`, `redo()`, and `go_to()` record a change that waits for the debounce before they move. Before, they dropped it.
+- A subclass of `Persisted` or `Trrackable` replaces its parent on the same widget, so one change is recorded once.
+
+### Fixed
+
+- `close()` is safe to call more than once, and a new wrapper works on a widget whose wrapper you closed.
+- With `debounce_ms`, `save()` and the save at interpreter exit include a change that waits for the debounce.
 
 ## 0.1.0 - 2026-11-23
 
