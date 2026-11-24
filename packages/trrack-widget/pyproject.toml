@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "trrack-widget"
 version = "0.1.0"
-description = "Save and track the state of anywidget widgets: persistence, undo, and redo for marimo and Jupyter."
+description = "Track the state of anywidget widgets."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

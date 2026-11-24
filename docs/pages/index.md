@@ -1,6 +1,6 @@
 # trrackpy
 
-Save and track the state of widgets in [marimo](https://marimo.io) and Jupyter.
+Track the state of [anywidget](https://anywidget.dev) widgets.
 
 ```python
 from trrack_widget import JsonFileStore, Persisted, Trrackable
