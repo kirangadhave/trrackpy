@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "trrack"
-version = "0.1.0"
+version = "0.1.1"
 description = "Branching tree-based provenance tracking for Python."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,6 +24,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/kirangadhave/trrackpy"
+Documentation = "https://kirangadhave.me/trrackpy/"
 Repository = "https://github.com/kirangadhave/trrackpy"
 
 [tool.hatch.build.targets.wheel]

@@ -18,10 +18,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-      # The API reference reads the Python source only, so the build does not
-      # install the packages or bundle the frontend.
-      - run: uv run --only-group docs zensical build
+      - uses: ./.github/actions/setup
+      # The live notebooks run in the browser on wheels built from this commit.
+      # The widget wheel needs the compiled frontend, so the script bundles it.
+      - name: Build live notebooks
+        run: docs/live/build.sh
+      # `--strict` fails the build on a broken link.
+      - run: uv run --only-group docs zensical build --strict
+      # The strict build does not check the address of an embedded notebook.
+      - name: Check the embedded notebooks
+        run: |
+          test -f site/live/trrackable/index.html
+          test -f site/live/persisted/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

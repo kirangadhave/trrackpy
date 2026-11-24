@@ -1,6 +1,9 @@
-"""Stores for tests."""
+"""Stores and timing for tests."""
 
 from __future__ import annotations
+
+# Longer than the save window that conftest.py sets, so a pending save lands.
+SAVE_WAIT_S = 0.15
 
 
 class RecordingStore:

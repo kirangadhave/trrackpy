@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import weakref
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import anywidget
 import traitlets
@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
     from trrack_widget._persist import CoalescedWriter
 
-# The wrapper of each class that currently follows a widget. Two wrappers of
-# one class on one widget would both react to every change, which happens when
+# The wrapper of each kind that currently follows a widget. Two wrappers of
+# one kind on one widget would both react to every change, which happens when
 # a notebook cell that creates the wrapper runs again.
 _active: weakref.WeakKeyDictionary[Any, dict[str, weakref.ref[TargetWidget]]] = (
     weakref.WeakKeyDictionary()
@@ -29,6 +29,13 @@ class TargetWidget(anywidget.AnyWidget):
 
     target = anywidget.WidgetTrait().tag(sync=True)
     error = traitlets.Unicode("").tag(sync=True)
+
+    # Names the wrappers that replace each other on one widget. A subclass
+    # inherits it, so it replaces its parent.
+    _kind: ClassVar[str]
+    # A class default, so a wrapper that failed in its constructor reads as
+    # not following.
+    _following = False
 
     def __init__(self, target: Any, **kwargs: Any) -> None:
         super().__init__(target=target, **kwargs)
@@ -66,19 +73,19 @@ class TargetWidget(anywidget.AnyWidget):
     def _follow_target(self) -> None:
         """Start to observe the target, in place of an earlier wrapper."""
         wrappers = _active.setdefault(self.target, {})
-        # anywidget gives each instance its own subclass, so the class object
-        # cannot be the key.
-        kind = type(self).__name__
-        previous = wrappers.get(kind, lambda: None)()
+        previous = wrappers.get(self._kind, lambda: None)()
         if previous is not None:
             previous._unfollow_target()  # noqa: SLF001
-        wrappers[kind] = weakref.ref(self)
+        wrappers[self._kind] = weakref.ref(self)
         self._values.observe(self._on_target_change)
+        self._following = True
 
     def _unfollow_target(self) -> None:
-        # A wrapper that failed in its constructor has no target.
-        if self.target is None:
+        # Runs again for a wrapper that was replaced or closed before: the
+        # garbage collector closes every widget one more time.
+        if not self._following:
             return
+        self._following = False
         self._values.unobserve(self._on_target_change)
         if self._writer is not None:
             self._writer.flush_if_pending()

@@ -2,11 +2,14 @@
 
 Track the state of [anywidget](https://anywidget.dev) widgets.
 
-```python
-from trrack_widget import JsonFileStore, Persisted, Trrackable
+Click the counter, undo, and click again:
 
-Persisted(counter, store=JsonFileStore("state.json"))   # comes back as you left it
-Trrackable(counter)                                      # undo, redo, and branch
+<iframe class="live-example" src="live/trrackable/" title="Live Trrackable example" height="360"></iframe>
+
+This is the code that runs above:
+
+```python
+--8<-- "docs/live/trrackable.py:example"
 ```
 
 - [`Persisted`](persisted.md) saves a widget's state and restores it the next
@@ -16,10 +19,10 @@ Trrackable(counter)                                      # undo, redo, and branc
 - A [store](stores.md) decides where the state lives: a file, a database, the
   URL. Write your own with two methods.
 
-Both work with any [anywidget](https://anywidget.dev).
-
 ## Where to start
 
 1. [Install](install.md) the package.
-2. Read [Persisted](persisted.md). It is the simpler of the two.
-3. Run an [example notebook](examples.md).
+2. Follow the [Quickstart](quickstart.md).
+3. Read the guides for [Persisted](persisted.md) and
+   [Trrackable](trrackable.md).
+4. Run an [example notebook](examples.md).

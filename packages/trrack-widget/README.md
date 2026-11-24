@@ -1,4 +1,4 @@
-# trrack-widget
+# <img src="https://raw.githubusercontent.com/kirangadhave/trrackpy/main/docs/pages/assets/favicon.svg" alt="" width="32" height="32" align="top"> trrack-widget
 
 [![PyPI](https://img.shields.io/pypi/v/trrack-widget?label=PyPI)](https://pypi.org/project/trrack-widget/)
 
@@ -23,13 +23,10 @@ Persisted(counter, store=JsonFileStore("state.json"))   # comes back as you left
 Trrackable(counter)                                      # undo, redo, and branch
 ```
 
-The store decides where the state lives. `JsonFileStore` uses a file. Write
-your own with two methods, `save` and `load`, to use a database or the URL.
-
 ## Docs
 
-The guide, the examples, and the API reference are at
-[kirangadhave.github.io/trrackpy](https://kirangadhave.github.io/trrackpy/).
+Read the guides, the examples, and the API reference at
+[kirangadhave.me/trrackpy](https://kirangadhave.me/trrackpy/).
 
 ## Requirements
 

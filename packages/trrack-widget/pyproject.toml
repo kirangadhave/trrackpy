@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "trrack-widget"
-version = "0.1.0"
+version = "0.1.1"
 description = "Track the state of anywidget widgets."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "trrack>=0.1.0",
+    "trrack>=0.1.1",
     "anywidget>=0.11.0",
 ]
 license = "BSD-3-Clause"
@@ -39,6 +39,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/kirangadhave/trrackpy"
+Documentation = "https://kirangadhave.me/trrackpy/"
 Repository = "https://github.com/kirangadhave/trrackpy"
 
 [tool.hatch.build]

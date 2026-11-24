@@ -1,8 +1,9 @@
 site_name: trrackpy
 site_description: Track the state of anywidget widgets.
-site_url: https://kirangadhave.github.io/trrackpy/
+site_url: https://kirangadhave.me/trrackpy/
 repo_url: https://github.com/kirangadhave/trrackpy
 repo_name: kirangadhave/trrackpy
+edit_uri: edit/main/docs/pages/
 
 # The docs folder also holds notes for coding agents, which are not site pages.
 docs_dir: docs/pages
@@ -10,23 +11,71 @@ site_dir: site
 
 theme:
   favicon: assets/favicon.svg
+  logo: assets/favicon.svg
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - content.action.edit
+    - content.code.copy
+    - content.tabs.link
+    - navigation.footer
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - toc.follow
+
+extra_css:
+  - assets/extra.css
 
 nav:
   - Home: index.md
-  - Install: install.md
-  - Persisted: persisted.md
-  - Trrackable: trrackable.md
-  - Stores: stores.md
+  - Get started:
+      - Install: install.md
+      - Quickstart: quickstart.md
+  - Guides:
+      - Persisted: persisted.md
+      - Trrackable: trrackable.md
+      - Stores: stores.md
+      - History without widgets: core.md
+  - How the history works: concepts.md
   - Examples: examples.md
   - API reference:
       - Widgets: api/widgets.md
       - Core: api/core.md
+  - Changelog: changelog.md
 
 markdown_extensions:
   - admonition
   - attr_list
+  - toc:
+      permalink: true
   - pymdownx.highlight
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      # Resolved against the directory where the build runs, the repo root.
+      base_path: ["."]
+      check_paths: true
+      dedent_subsections: true
 
 plugins:
   - search

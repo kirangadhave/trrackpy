@@ -174,7 +174,12 @@ class JsonFileStore:
     """A ``Store`` that round-trips the payload through one JSON file."""
 
     def __init__(self, path: str | os.PathLike[str]) -> None:
-        """Back persistence with the JSON file at ``path``."""
+        """Save to and load from the JSON file at ``path``.
+
+        Args:
+            path (str | os.PathLike[str]): The path of the file. Missing
+                parent folders are created on the first save.
+        """
         self._path = path
 
     def save(self, data: dict) -> None:

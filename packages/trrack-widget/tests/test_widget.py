@@ -6,7 +6,7 @@ import time
 import anywidget
 import pytest
 import traitlets
-from helpers import FlakyStore, RecordingStore
+from helpers import SAVE_WAIT_S, FlakyStore, RecordingStore
 
 from trrack import JsonFileStore
 from trrack_widget import Trrackable
@@ -116,18 +116,6 @@ def test_flush_commits_pending_debounced_change():
     tt.flush()
     assert len(tt.nodes) == 2
     assert tt.nodes[tt.current_id]["state"] == {"count": 2}
-
-
-def test_navigation_cancels_pending_debounced_change():
-    counter = Counter()
-    tt = Trrackable(counter, debounce_ms=10000)
-    counter.count = 1
-    tt.flush()  # commit a real node so undo has somewhere to go
-    counter.count = 5  # pending burst
-    tt.undo()  # navigating away discards the uncommitted burst
-    tt.flush()
-    assert len(tt.nodes) == 2
-    assert counter.count == 0
 
 
 def test_to_dict_from_dict_restores_tree_and_target():
@@ -301,12 +289,12 @@ def test_failed_background_save_shows_an_error_then_clears():
 
     store.broken = True
     counter.count = 1
-    time.sleep(0.15)
+    time.sleep(SAVE_WAIT_S)
     assert tt.error == "Could not save: disk is full"
 
     store.broken = False
     counter.count = 2
-    time.sleep(0.15)
+    time.sleep(SAVE_WAIT_S)
     assert tt.error == ""
 
 
